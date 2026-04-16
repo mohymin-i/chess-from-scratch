@@ -7,14 +7,6 @@ using std::cout;
 using std::endl;
 using std::vector;
 
-const int a = 0;
-const int b = 1;
-const int c = 2;
-const int d = 3;
-const int e = 4;
-const int f = 5;
-const int g = 6;
-const int h = 7;
 
 
 class Board {
@@ -26,6 +18,12 @@ private:
     // Fitting for pawns
 
     // We can hardcode bitboards since there will always be 12 for the pieces
+    // and several more for calculations
+
+    uint64_t allPieces = 0xFFFF00000000FFFF; // All pieces - first and last 2 rows occupied
+    uint64_t whitePieces = 0xFFFF000000000000;
+    uint64_t blackPieces = 0xFFFF000000000000;
+    uint64_t enPassant = 0x0000000000000000;
 
 
 
