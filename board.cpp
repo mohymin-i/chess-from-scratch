@@ -50,10 +50,17 @@ public:
 
     } // default constructor
 
+
     void print() {
 
-    }
+    } // print
 
 
 
+    void checkmate() {
+
+    } // checkmate
+
+
+    
 };
