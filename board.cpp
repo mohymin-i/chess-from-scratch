@@ -62,5 +62,12 @@ public:
     } // checkmate
 
 
+    bool movePawn(uint64_t base, uint64_t target) {
+        // validate move
+
+        // update
+    }
+
+
     
 };
