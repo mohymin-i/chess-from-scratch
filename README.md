@@ -6,9 +6,17 @@ Built entirely by Mohymin Islam, computer science student at the University of M
 
 ## Progress
 
-As of right now, this project is in its infancy. I am currently working on implementing the core game with two players first.
+The chess engine is in place; the graphical game comes next.
 
-The board representation (bitboards for all 12 piece types) and its test suite are in place, and positions can be loaded from and saved to FEN. Move generation and the rest of the rules come next; see [ROADMAP.md](ROADMAP.md) for the full plan.
+- **Rules:** bitboard board representation, FEN import/export, legal move generation (verified with perft against
+  published counts), make/unmake, Zobrist hashing, and every way a game can end (checkmate, stalemate, the 50-move
+  rule, threefold repetition, insufficient material).
+- **Engine:** alpha-beta search with quiescence, a transposition table, move ordering and pruning, and a hand-tuned
+  evaluation.
+- **Bots:** six difficulty levels with different playing styles, from a beginner-friendly but still tricky level 1
+  to full strength. See [BOTS.md](BOTS.md).
+
+See [ROADMAP.md](ROADMAP.md) for the full plan.
 
 ## Running the tests
 
@@ -27,6 +35,9 @@ ctest --test-dir build-asan --output-on-failure
 ```
 
 To run a subset, pass part of a test name: `./build/chess_tests board_place`.
+
+Deep perft and the bot-vs-bot strength games are labeled `slow` and take about a minute. Skip them with
+`ctest --test-dir build -LE slow`.
 
 Every push and pull request runs the tests on macOS and Linux, with and without sanitizers, through GitHub Actions.
 
