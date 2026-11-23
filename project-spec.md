@@ -8,7 +8,7 @@ What I can use
 - C++ standard library
 - Graphics libraries
 - Libraries unrelated to chess
-- Non-AI assistance
+- Outside assistance
     - stack overflow
     - reddit posts
     - public information about chess algorithms
@@ -16,7 +16,6 @@ What I can use
 What I can't use
 - Chess bots made by other people
 - Chess evaluation tools made by other people
-- AI to generate code - conceptual questions and debugging only
 
 ## Plans
 
