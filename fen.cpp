@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "board.h"
+#include "movegen.h"
 
 namespace {
 
@@ -192,6 +193,13 @@ Board Board::fromFen(std::string_view fen) {
         if (board.fullmoveNumber_ < 1) reject("fullmove number must be at least 1");
     }
 
+    board.hash_ = board.computeHash(); // the fields above were set directly, bypassing the hash updates
+
+    // The side that just moved can't have left its own king in check; the side to move could capture it.
+    if (moverLeftInCheck(board)) {
+        reject(std::string(board.sideToMove_ == Color::White ? "black" : "white") +
+               " is in check but it's not their move");
+    }
     return board;
 }
 

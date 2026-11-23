@@ -10,6 +10,7 @@
 #include <string_view>
 
 #include "piece.h"
+#include "zobrist.h"
 
 using Bitboard = std::uint64_t;
 
@@ -66,6 +67,17 @@ public:
     using std::invalid_argument::invalid_argument;
 };
 
+class Move;
+
+// What makeMove needs to hand back so unmakeMove can restore the position exactly.
+struct UndoInfo {
+    std::optional<Piece> captured;
+    std::uint8_t castlingRights;
+    Square enPassant;
+    int halfmoveClock;
+    std::uint64_t hash;
+};
+
 class Board {
 public:
     Board();              // standard starting position
@@ -74,7 +86,8 @@ public:
     // Parses a FEN string. The halfmove clock and fullmove number may be left off (they default to 0 and 1).
     // Throws FenError for malformed text and for positions the engine can't handle: not exactly one king per
     // side, kings next to each other, pawns on rank 1 or 8, a castling right without the king and rook on their
-    // home squares, or an en passant square with no pawn that could have just double-pushed past it.
+    // home squares, an en passant square with no pawn that could have just double-pushed past it, or the side
+    // that isn't moving being in check.
     // It either returns a complete board or throws; it never returns a half-loaded one.
     static Board fromFen(std::string_view fen);
     // Always writes all six fields, with castling rights in KQkq order.
@@ -105,6 +118,7 @@ public:
         pieces_[idx(piece.color)][idx(piece.type)] |= bit;
         occupancy_[idx(piece.color)] |= bit;
         mailbox_[sq] = piece;
+        hash_ ^= zobrist::KEYS.piece[idx(piece.color)][idx(piece.type)][sq];
     }
     void removePieceUnchecked(Square sq) {
         assert(isValidSquare(sq));
@@ -115,6 +129,7 @@ public:
         pieces_[idx(old->color)][idx(old->type)] &= keep;
         occupancy_[idx(old->color)] &= keep;
         mailbox_[sq].reset();
+        hash_ ^= zobrist::KEYS.piece[idx(old->color)][idx(old->type)][sq];
     }
 
     Color sideToMove() const { return sideToMove_; }
@@ -123,8 +138,29 @@ public:
     int halfmoveClock() const { return halfmoveClock_; }   // moves since the last capture or pawn move (50-move rule)
     int fullmoveNumber() const { return fullmoveNumber_; } // starts at 1, goes up after each black move
 
+    // Zobrist fingerprint of the position (see zobrist.h). Every change to the board keeps it up to date.
+    // Equal positions have equal hashes; different positions almost always have different ones.
+    std::uint64_t hash() const { return hash_; }
+    // Recomputes the hash from scratch. Only for tests and isConsistent().
+    std::uint64_t computeHash() const;
+
+    // Plays a move. The move must be pseudo-legal for this position (as produced by move generation): it may
+    // leave the mover's own king in check, but everything else about it must be possible. Keep the returned
+    // UndoInfo to take the move back with unmakeMove.
+    // After a double pawn push the en passant square is only set if an enemy pawn could actually capture there,
+    // so positions that only differ by a useless en passant square hash the same (this matters for repetition).
+    UndoInfo makeMove(Move move);
+    // Takes back the last move played with makeMove. Restores the board exactly, including the hash.
+    void unmakeMove(Move move, const UndoInfo& undo);
+    // Passes the turn without moving, for null-move pruning in search. Never call it while in check.
+    UndoInfo makeNullMove();
+    void unmakeNullMove(const UndoInfo& undo);
+
     // Setters reject impossible values and leave the board unchanged when they throw.
-    void setSideToMove(Color color) { sideToMove_ = color; }
+    void setSideToMove(Color color) {
+        if (color != sideToMove_) hash_ ^= zobrist::KEYS.blackToMove;
+        sideToMove_ = color;
+    }
     void setCastlingRights(std::uint8_t rights); // std::invalid_argument unless a combination of CastlingRight flags
     void setEnPassantSquare(Square sq);          // NO_SQUARE or a rank 3/6 square; std::out_of_range off the board,
                                                  // std::invalid_argument on any other rank
@@ -133,7 +169,8 @@ public:
 
     std::string toString() const;
 
-    // True if no square holds two pieces, and the cached occupancy and mailbox both match the piece bitboards.
+    // True if no square holds two pieces, the cached occupancy and mailbox both match the piece bitboards,
+    // and the hash matches one computed from scratch.
     bool isConsistent() const;
 
 private:
@@ -155,6 +192,7 @@ private:
     Square enPassant_ = NO_SQUARE;
     int halfmoveClock_ = 0;
     int fullmoveNumber_ = 1;
+    std::uint64_t hash_ = 0; // an empty board with white to move and nothing else set hashes to 0
 };
 
 #endif //CHESS_FROM_SCRATCH_BOARD_H

@@ -3,6 +3,7 @@
 #include <string>
 
 #include "board.h"
+#include "movegen.h"
 #include "test_framework.h"
 
 namespace {
@@ -207,6 +208,7 @@ TEST(fen_random_boards_round_trip) {
     std::uniform_int_distribution<int> countDist(0, 30);
     std::uniform_int_distribution<int> clockDist(0, 200);
 
+    int checked = 0;
     for (int round = 0; round < 2000; ++round) {
         Board board = Board::empty();
         Square whiteKing;
@@ -230,12 +232,15 @@ TEST(fen_random_boards_round_trip) {
         board.setSideToMove(static_cast<Color>(colorDist(rng)));
         board.setHalfmoveClock(clockDist(rng));
         board.setFullmoveNumber(1 + clockDist(rng));
+        if (moverLeftInCheck(board)) continue; // not a reachable position, and fromFen rightly rejects it
+        ++checked;
 
         const std::string fen = board.toFen();
         const Board parsed = Board::fromFen(fen);
         CHECK(parsed == board);
         CHECK_EQ(parsed.toFen(), fen);
     }
+    CHECK(checked > 1000); // most random boards are still usable
 }
 
 // Randomly damaged FEN strings either throw FenError or give a consistent board. Never anything else.

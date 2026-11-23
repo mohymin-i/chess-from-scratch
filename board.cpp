@@ -1,6 +1,10 @@
 #include "board.h"
 
+#include <array>
 #include <stdexcept>
+
+#include "attacks.h"
+#include "move.h"
 
 Square squareFromString(std::string_view name) {
     if (name.size() != 2) return NO_SQUARE;
@@ -46,6 +50,7 @@ Board::Board() {
         }
     }
     castlingRights_ = ALL_CASTLING;
+    hash_ = computeHash();
 }
 
 void Board::checkSquare(Square sq) {
@@ -109,7 +114,7 @@ bool Board::isConsistent() const {
     if (enPassant_ != NO_SQUARE && !isValidEnPassantSquare(enPassant_)) return false;
     if (castlingRights_ & ~ALL_CASTLING) return false;
     if (halfmoveClock_ < 0 || fullmoveNumber_ < 1) return false;
-    return true;
+    return hash_ == computeHash();
 }
 
 bool Board::isValidEnPassantSquare(Square sq) {
@@ -121,18 +126,19 @@ void Board::setCastlingRights(std::uint8_t rights) {
     if (rights & ~ALL_CASTLING) {
         throw std::invalid_argument("setCastlingRights: unknown flags in " + std::to_string(rights));
     }
+    hash_ ^= zobrist::KEYS.castling[castlingRights_] ^ zobrist::KEYS.castling[rights];
     castlingRights_ = rights;
 }
 
 void Board::setEnPassantSquare(Square sq) {
-    if (sq == NO_SQUARE) {
-        enPassant_ = NO_SQUARE;
-        return;
+    if (sq != NO_SQUARE) {
+        checkSquare(sq); // std::out_of_range for a square off the board
+        if (!isValidEnPassantSquare(sq)) {
+            throw std::invalid_argument("setEnPassantSquare: " + squareToString(sq) + " is not on rank 3 or 6");
+        }
     }
-    checkSquare(sq); // std::out_of_range for a square off the board
-    if (!isValidEnPassantSquare(sq)) {
-        throw std::invalid_argument("setEnPassantSquare: " + squareToString(sq) + " is not on rank 3 or 6");
-    }
+    if (enPassant_ != NO_SQUARE) hash_ ^= zobrist::KEYS.enPassantFile[fileOf(enPassant_)];
+    if (sq != NO_SQUARE) hash_ ^= zobrist::KEYS.enPassantFile[fileOf(sq)];
     enPassant_ = sq;
 }
 
@@ -144,4 +150,149 @@ void Board::setHalfmoveClock(int clock) {
 void Board::setFullmoveNumber(int number) {
     if (number < 1) throw std::invalid_argument("setFullmoveNumber: must be at least 1, got " + std::to_string(number));
     fullmoveNumber_ = number;
+}
+
+std::uint64_t Board::computeHash() const {
+    std::uint64_t h = 0;
+    for (Square sq = A1; sq <= H8; ++sq) {
+        if (const std::optional<Piece>& p = mailbox_[sq]) h ^= zobrist::KEYS.piece[idx(p->color)][idx(p->type)][sq];
+    }
+    h ^= zobrist::KEYS.castling[castlingRights_];
+    if (enPassant_ != NO_SQUARE) h ^= zobrist::KEYS.enPassantFile[fileOf(enPassant_)];
+    if (sideToMove_ == Color::Black) h ^= zobrist::KEYS.blackToMove;
+    return h;
+}
+
+namespace {
+// castlingRights &= CASTLING_KEEP[from] & CASTLING_KEEP[to] after every move: moving the king or a rook off its
+// home square, or capturing a rook on its home square, loses the matching rights.
+constexpr std::array<std::uint8_t, NUM_SQUARES> makeCastlingKeep() {
+    std::array<std::uint8_t, NUM_SQUARES> keep{};
+    for (auto& k : keep) k = ALL_CASTLING;
+    keep[E1] = static_cast<std::uint8_t>(ALL_CASTLING & ~(WHITE_KINGSIDE | WHITE_QUEENSIDE));
+    keep[H1] = static_cast<std::uint8_t>(ALL_CASTLING & ~WHITE_KINGSIDE);
+    keep[A1] = static_cast<std::uint8_t>(ALL_CASTLING & ~WHITE_QUEENSIDE);
+    keep[E8] = static_cast<std::uint8_t>(ALL_CASTLING & ~(BLACK_KINGSIDE | BLACK_QUEENSIDE));
+    keep[H8] = static_cast<std::uint8_t>(ALL_CASTLING & ~BLACK_KINGSIDE);
+    keep[A8] = static_cast<std::uint8_t>(ALL_CASTLING & ~BLACK_QUEENSIDE);
+    return keep;
+}
+constexpr auto CASTLING_KEEP = makeCastlingKeep();
+
+// Where the rook goes from and to for a castling move whose king lands on `kingTo`.
+struct RookHop {
+    Square from;
+    Square to;
+};
+constexpr RookHop rookHopFor(Square kingTo) {
+    switch (kingTo) {
+        case G1: return {H1, F1};
+        case C1: return {A1, D1};
+        case G8: return {H8, F8};
+        default: return {A8, D8}; // C8
+    }
+}
+} // namespace
+
+UndoInfo Board::makeMove(Move move) {
+    UndoInfo undo{std::nullopt, castlingRights_, enPassant_, halfmoveClock_, hash_};
+
+    const Square from = move.from();
+    const Square to = move.to();
+    const Color us = sideToMove_;
+    const Color them = opposite(us);
+    assert(mailbox_[from] && mailbox_[from]->color == us);
+    const Piece mover = *mailbox_[from];
+
+    // Clear the old en passant square from the hash; a new one may be set below.
+    if (enPassant_ != NO_SQUARE) hash_ ^= zobrist::KEYS.enPassantFile[fileOf(enPassant_)];
+    enPassant_ = NO_SQUARE;
+
+    ++halfmoveClock_;
+    if (mover.type == PieceType::Pawn) halfmoveClock_ = 0;
+
+    if (move.isEnPassant()) {
+        const auto capturedSquare = static_cast<Square>(us == Color::White ? to - 8 : to + 8);
+        undo.captured = mailbox_[capturedSquare];
+        removePieceUnchecked(capturedSquare);
+    } else if (mailbox_[to]) {
+        undo.captured = mailbox_[to];
+        halfmoveClock_ = 0;
+        removePieceUnchecked(to);
+    }
+
+    removePieceUnchecked(from);
+    placePieceUnchecked(move.isPromotion() ? Piece{move.promotionType(), us} : mover, to);
+
+    if (move.isCastle()) {
+        const RookHop hop = rookHopFor(to);
+        removePieceUnchecked(hop.from);
+        placePieceUnchecked(Piece{PieceType::Rook, us}, hop.to);
+    }
+
+    if (move.isDoublePawnPush()) {
+        // Only record the en passant square if an enemy pawn is actually next to the pushed pawn.
+        const auto skipped = static_cast<Square>(us == Color::White ? from + 8 : from - 8);
+        if (pawnAttacks(us, skipped) & pieces(them, PieceType::Pawn)) {
+            enPassant_ = skipped;
+            hash_ ^= zobrist::KEYS.enPassantFile[fileOf(skipped)];
+        }
+    }
+
+    const std::uint8_t newRights = castlingRights_ & CASTLING_KEEP[from] & CASTLING_KEEP[to];
+    if (newRights != castlingRights_) {
+        hash_ ^= zobrist::KEYS.castling[castlingRights_] ^ zobrist::KEYS.castling[newRights];
+        castlingRights_ = newRights;
+    }
+
+    if (us == Color::Black) ++fullmoveNumber_;
+    sideToMove_ = them;
+    hash_ ^= zobrist::KEYS.blackToMove;
+    return undo;
+}
+
+void Board::unmakeMove(Move move, const UndoInfo& undo) {
+    const Square from = move.from();
+    const Square to = move.to();
+    const Color us = opposite(sideToMove_); // the side that made the move
+    sideToMove_ = us;
+    if (us == Color::Black) --fullmoveNumber_;
+
+    if (move.isCastle()) {
+        const RookHop hop = rookHopFor(to);
+        removePieceUnchecked(hop.to);
+        placePieceUnchecked(Piece{PieceType::Rook, us}, hop.from);
+    }
+
+    const Piece moved = move.isPromotion() ? Piece{PieceType::Pawn, us} : *mailbox_[to];
+    removePieceUnchecked(to);
+    placePieceUnchecked(moved, from);
+
+    if (undo.captured) {
+        const Square capturedSquare =
+            move.isEnPassant() ? static_cast<Square>(us == Color::White ? to - 8 : to + 8) : to;
+        placePieceUnchecked(*undo.captured, capturedSquare);
+    }
+
+    castlingRights_ = undo.castlingRights;
+    enPassant_ = undo.enPassant;
+    halfmoveClock_ = undo.halfmoveClock;
+    hash_ = undo.hash; // cheaper than undoing each XOR, and exact by construction
+}
+
+UndoInfo Board::makeNullMove() {
+    const UndoInfo undo{std::nullopt, castlingRights_, enPassant_, halfmoveClock_, hash_};
+    if (enPassant_ != NO_SQUARE) hash_ ^= zobrist::KEYS.enPassantFile[fileOf(enPassant_)];
+    enPassant_ = NO_SQUARE;
+    ++halfmoveClock_;
+    sideToMove_ = opposite(sideToMove_);
+    hash_ ^= zobrist::KEYS.blackToMove;
+    return undo;
+}
+
+void Board::unmakeNullMove(const UndoInfo& undo) {
+    sideToMove_ = opposite(sideToMove_);
+    enPassant_ = undo.enPassant;
+    halfmoveClock_ = undo.halfmoveClock;
+    hash_ = undo.hash;
 }
