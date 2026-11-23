@@ -33,6 +33,7 @@ std::vector<BotSettings> makeBuiltIns() {
     pebble.search.weights.mobility = 60;
     pebble.search.weights.kingSafety = 60;
     pebble.search.weights.pawnStructure = 60;
+    pebble.humanLikeChoice = true;
     pebble.hashMegabytes = 4;
     bots.push_back(pebble);
 
@@ -47,6 +48,7 @@ std::vector<BotSettings> makeBuiltIns() {
     juniper.mistakeChance = 0.04;
     juniper.mistakeMargin = 140;
     juniper.search.weights.mobility = 80;
+    juniper.humanLikeChoice = true;
     juniper.hashMegabytes = 8;
     bots.push_back(juniper);
 
@@ -62,6 +64,7 @@ std::vector<BotSettings> makeBuiltIns() {
     corvid.mistakeMargin = 100;
     corvid.search.weights.mobility = 125;
     corvid.search.contempt = 5;
+    corvid.humanLikeChoice = true;
     bots.push_back(corvid);
 
     BotSettings bastion = make(4, "Bastion",
@@ -108,6 +111,44 @@ std::vector<BotSettings> makeBuiltIns() {
 
     return bots;
 }
+
+} // namespace
+
+double moveNaturalness(const Game& game, Move move) {
+    const Board& board = game.board();
+    const std::optional<Piece> piece = board.pieceAt(move.from());
+    if (!piece) return 1.0;
+    const int ply = (board.fullmoveNumber() - 1) * 2 + (board.sideToMove() == Color::Black ? 1 : 0);
+    const bool opening = ply < 16;
+    const int homeRank = piece->color == Color::White ? 0 : 7;
+    const std::vector<Move>& history = game.moves();
+    double w = 1.0;
+
+    // Taking back after a capture is the most natural reply there is.
+    if (!history.empty() && history.back().isCapture() && history.back().to() == move.to()) w *= 2.0;
+    if (move.isCastle()) w *= 1.8;
+    if (opening && (piece->type == PieceType::Knight || piece->type == PieceType::Bishop) &&
+        rankOf(move.from()) == homeRank) {
+        w *= 1.6; // developing
+    }
+    if (opening && piece->type == PieceType::Queen && !move.isCapture()) w *= 0.6;
+    if (opening && history.size() >= 2 && history[history.size() - 2].to() == move.from() && !move.isCapture()) {
+        w *= 0.6; // the same piece again
+    }
+    if (piece->type == PieceType::Pawn && !move.isCapture() && ply < 20) {
+        const int file = fileOf(move.from());
+        if (file == 0 || file == 7) w *= 0.4;
+    }
+    const bool queensOn = board.pieces(Color::White, PieceType::Queen) | board.pieces(Color::Black, PieceType::Queen);
+    if (piece->type == PieceType::King && !move.isCastle() && queensOn && !inCheck(board)) w *= 0.35;
+
+    Board after = board;
+    after.makeMove(move);
+    if (inCheck(after)) w *= 1.15; // people look at checks first
+    return w;
+}
+
+namespace {
 
 std::string lower(std::string_view s) {
     std::string out(s);
@@ -207,7 +248,9 @@ Move Bot::chooseMove(const Game& game, std::optional<int> clockMs, int increment
     std::vector<double> weights;
     weights.reserve(candidates.size());
     for (const ScoredMove& c : candidates) {
-        weights.push_back(std::exp(-static_cast<double>(best - c.score) / settings_.temperature));
+        double w = std::exp(-static_cast<double>(best - c.score) / settings_.temperature);
+        if (settings_.humanLikeChoice) w *= moveNaturalness(game, c.move);
+        weights.push_back(w);
     }
     std::discrete_distribution<std::size_t> pick(weights.begin(), weights.end());
     return candidates[pick(rng_)].move;

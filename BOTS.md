@@ -29,6 +29,11 @@ every CI run; levels 4 to 6 were checked by hand at reduced time controls).
   the best, occasionally (7% of moves) up to 180. That's at most "a bit worse", never "hangs a piece", which costs
   300 or more.
 - **It always plays a forced mate** when it finds one, and always takes a free piece.
+- **Its imperfect moves look human.** Research on human-like engines found that a strong engine weakened with
+  random noise doesn't play like a weaker person, and players complain about bots that "blunder out of nothing".
+  So when Pebble, Juniper and Corvid pick a near-best move, they favor natural ones. Measured over 30 seeded
+  Pebble openings, this halves king walks and edge-pawn pushes and adds more development and castling, with no
+  change in strength (10/20 against the plain version).
 
 `tests/engine_tests.cpp` (`bot_weakest_level_is_still_a_challenge`) checks this across ten random seeds: Pebble
 always takes a free queen, always mates in one, finds a quiet knight fork, never grabs a pawn that loses its queen,
@@ -53,6 +58,7 @@ Move m = bot.chooseMove(game);
 | `randomMargin`, `temperature` | Candidate moves are those within `randomMargin` centipawns of the best. Each is picked with weight `exp(-(best - score) / temperature)`, so better moves are still more likely. `0` always plays the best move. |
 | `mistakeChance`, `mistakeMargin` | With this probability the margin widens for one move, like a human lapse. |
 | `candidateDepth` | Search depth used when choosing among candidates (defaults to `maxDepth`). |
+| `humanLikeChoice` | When settling for a less-than-best move, prefer natural ones (recaptures, development, castling, checks) over aimless king walks, early edge-pawn pushes, early queen trips and moving a piece twice. On for levels 1-3. |
 | `openingVarietyPlies`, `openingVarietyMargin` | Lets even full-strength bots vary their first few moves so games don't repeat. |
 | `search.weights` | Percent scales for evaluation terms: `material`, `pieceSquare`, `mobility`, `kingSafety`, `pawnStructure`, `passedPawns`. This is where the personalities come from. |
 | `search.contempt` | How many centipawns worse than equal a draw is for the bot. Positive values make it avoid repetitions. |
