@@ -35,27 +35,33 @@ void Game::refresh() {
     generateLegal(board_, legal_);
 }
 
-bool Game::play(Move move) {
+bool Game::play(Move move, std::optional<int> thinkTimeMs) {
     if (status().isOver() || !legal_.contains(move)) return false;
     undos_.push_back(board_.makeMove(move));
     moves_.push_back(move);
+    times_.push_back(thinkTimeMs && *thinkTimeMs >= 0 ? thinkTimeMs : std::nullopt);
     hashes_.push_back(board_.hash());
     redo_.clear();
     refresh();
     return true;
 }
 
-bool Game::playUci(std::string_view uci) {
+bool Game::playUci(std::string_view uci, std::optional<int> thinkTimeMs) {
     const std::optional<Move> move = moveFromUci(board_, uci);
-    return move && play(*move);
+    return move && play(*move, thinkTimeMs);
+}
+
+void Game::setMoveTime(std::size_t index, std::optional<int> thinkTimeMs) {
+    if (index < times_.size()) times_[index] = thinkTimeMs && *thinkTimeMs >= 0 ? thinkTimeMs : std::nullopt;
 }
 
 bool Game::undo() {
     if (moves_.empty()) return false;
     manualEnd_.reset();
     board_.unmakeMove(moves_.back(), undos_.back());
-    redo_.push_back(moves_.back());
+    redo_.emplace_back(moves_.back(), times_.back());
     moves_.pop_back();
+    times_.pop_back();
     undos_.pop_back();
     hashes_.pop_back();
     refresh();
@@ -64,10 +70,10 @@ bool Game::undo() {
 
 bool Game::redo() {
     if (redo_.empty()) return false;
-    const Move move = redo_.back();
+    const auto [move, time] = redo_.back();
     redo_.pop_back();
-    std::vector<Move> rest = std::move(redo_);
-    const bool ok = play(move); // clears redo_, so restore the rest afterwards
+    auto rest = std::move(redo_);
+    const bool ok = play(move, time); // clears redo_, so restore the rest afterwards
     redo_ = std::move(rest);
     return ok;
 }

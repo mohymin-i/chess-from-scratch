@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "board.h"
@@ -51,9 +52,15 @@ public:
     const std::vector<std::uint64_t>& positionHistory() const { return hashes_; }
 
     // Plays a move if it's legal and the game isn't over. Returns false (and changes nothing) otherwise.
-    // Playing a move clears the redo list.
-    bool play(Move move);
-    bool playUci(std::string_view uci);
+    // Playing a move clears the redo list. thinkTimeMs is how long the player took, if known; it's kept with the
+    // move (and saved to PGN) for clocks, analysis and later fair-play checks.
+    bool play(Move move, std::optional<int> thinkTimeMs = std::nullopt);
+    bool playUci(std::string_view uci, std::optional<int> thinkTimeMs = std::nullopt);
+
+    // Think time per move, parallel to moves(); nullopt where it wasn't recorded.
+    const std::vector<std::optional<int>>& moveTimes() const { return times_; }
+    // Records or corrects the think time of an already played move (PGN import uses this). Ignores bad indexes.
+    void setMoveTime(std::size_t index, std::optional<int> thinkTimeMs);
 
     bool canUndo() const { return !moves_.empty(); }
     bool canRedo() const { return !redo_.empty(); }
@@ -79,7 +86,8 @@ private:
     std::vector<Move> moves_;
     std::vector<UndoInfo> undos_;
     std::vector<std::uint64_t> hashes_;
-    std::vector<Move> redo_;
+    std::vector<std::optional<int>> times_;
+    std::vector<std::pair<Move, std::optional<int>>> redo_;
     MoveList legal_;
     std::optional<GameStatus> manualEnd_; // resignation or agreed draw
 };
