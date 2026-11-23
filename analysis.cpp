@@ -105,8 +105,7 @@ GameAnalysis analyzeGame(const Game& game, const AnalysisSettings& settings) {
     for (int i = 0; i <= total; ++i) {
         history.push_back(replay.board().hash());
         const GameStatus status = replay.status();
-        if (status.isOver() && status.reason != GameEndReason::Resignation &&
-            status.reason != GameEndReason::DrawAgreed) {
+        if (status.isOver() && isRuleEnding(status.reason)) {
             // Ended by the rules: the score is known exactly.
             scores[i] = status.reason == GameEndReason::Checkmate ? -search::MATE : 0;
         } else {
@@ -120,7 +119,8 @@ GameAnalysis analyzeGame(const Game& game, const AnalysisSettings& settings) {
         }
         analyzed = i;
         if (i == total || cancelled) break;
-        // Resignations and agreed draws only happen after the last move, so the replay never refuses a move.
+        // Resignations, agreed draws and timeouts only happen after the last move, so the replay never refuses
+        // a move.
         if (!replay.play(moves[i])) break;
         if (settings.progress && !settings.progress(i + 1, total)) cancelled = true; // finish this move first
     }

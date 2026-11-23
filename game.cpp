@@ -84,6 +84,20 @@ void Game::resign(Color loser) {
                             GameEndReason::Resignation};
 }
 
+void Game::timeout(Color loser) {
+    if (status().isOver()) return;
+    const Color winner = opposite(loser);
+    const Bitboard heavy = board_.pieces(winner, PieceType::Pawn) | board_.pieces(winner, PieceType::Rook) |
+                           board_.pieces(winner, PieceType::Queen);
+    const int minors = popCount(board_.pieces(winner, PieceType::Knight) | board_.pieces(winner, PieceType::Bishop));
+    if (!heavy && minors <= 1) {
+        manualEnd_ = GameStatus{GameResult::Draw, GameEndReason::Timeout};
+    } else {
+        manualEnd_ = GameStatus{winner == Color::White ? GameResult::WhiteWins : GameResult::BlackWins,
+                                GameEndReason::Timeout};
+    }
+}
+
 void Game::agreeDraw() {
     if (status().isOver()) return;
     manualEnd_ = GameStatus{GameResult::Draw, GameEndReason::DrawAgreed};

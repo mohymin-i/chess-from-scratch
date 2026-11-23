@@ -24,7 +24,16 @@ enum class GameEndReason : std::uint8_t {
     InsufficientMaterial, // neither side can possibly checkmate
     Resignation,
     DrawAgreed,
+    Timeout, // a clock ran out
 };
+
+// True for endings decided by the position itself (mate, stalemate, the draw rules), as opposed to a player
+// resigning, agreeing a draw or running out of time.
+constexpr bool isRuleEnding(GameEndReason reason) {
+    return reason == GameEndReason::Checkmate || reason == GameEndReason::Stalemate ||
+           reason == GameEndReason::FiftyMoveRule || reason == GameEndReason::ThreefoldRepetition ||
+           reason == GameEndReason::InsufficientMaterial;
+}
 
 struct GameStatus {
     GameResult result = GameResult::Ongoing;
@@ -69,6 +78,9 @@ public:
 
     void resign(Color loser);
     void agreeDraw();
+    // `loser` ran out of time. That's a loss, unless the opponent has nothing left that could ever checkmate
+    // (a bare king, or king and a single knight or bishop), which makes it a draw under the FIDE rules.
+    void timeout(Color loser);
 
     // Computed fresh from the current position each time.
     GameStatus status() const;
