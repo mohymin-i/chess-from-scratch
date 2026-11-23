@@ -68,8 +68,10 @@ std::string describe(const T& value) {
 
 #define CHECK_EQ(actual, expected)                                                             \
     do {                                                                                       \
-        const auto& actual_ = (actual);                                                        \
-        const auto& expected_ = (expected);                                                    \
+        /* Copies, not references: a reference to part of a temporary (say findBot("x")->name)  \
+           would dangle once this statement ends. */                                           \
+        const auto actual_ = (actual);                                                         \
+        const auto expected_ = (expected);                                                     \
         if (!(actual_ == expected_)) {                                                         \
             ::chess_test::fail(__FILE__, __LINE__,                                             \
                                "CHECK_EQ(" #actual ", " #expected ") failed\n         got:      " + \

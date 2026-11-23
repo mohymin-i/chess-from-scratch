@@ -17,7 +17,7 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 endif()
 
 # Game logic lives in a library so anything built later and the tests share exactly the same code.
-add_library(chess_core board.cpp fen.cpp move.cpp movegen.cpp game.cpp piece.cpp)
+add_library(chess_core board.cpp fen.cpp move.cpp movegen.cpp game.cpp eval.cpp search.cpp bot.cpp piece.cpp)
 target_include_directories(chess_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 # ---- Tests: run with `ctest --test-dir <build dir> --output-on-failure` ----
@@ -32,7 +32,8 @@ add_executable(chess_tests
         tests/move_tests.cpp
         tests/attack_tests.cpp
         tests/movegen_tests.cpp
-        tests/game_tests.cpp)
+        tests/game_tests.cpp
+        tests/engine_tests.cpp)
 target_link_libraries(chess_tests PRIVATE chess_core)
 
 add_test(NAME unit_tests COMMAND chess_tests)
@@ -43,3 +44,9 @@ add_executable(chess_perft_deep tests/test_main.cpp tests/perft_deep.cpp)
 target_link_libraries(chess_perft_deep PRIVATE chess_core)
 add_test(NAME perft_deep COMMAND chess_perft_deep)
 set_tests_properties(perft_deep PROPERTIES LABELS slow)
+
+# Bot-vs-bot games that check each difficulty level beats the one below it. Also labeled "slow".
+add_executable(chess_bot_matches tests/test_main.cpp tests/bot_matches.cpp)
+target_link_libraries(chess_bot_matches PRIVATE chess_core)
+add_test(NAME bot_matches COMMAND chess_bot_matches)
+set_tests_properties(bot_matches PROPERTIES LABELS slow)

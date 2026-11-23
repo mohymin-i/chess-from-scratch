@@ -2,9 +2,11 @@
 
 _The planned pull requests for this project, in the order they should land. Written 2026-11-23._
 
-**Where things stand:** `chess_core` has bitboards for all 12 piece types, square helpers, place/remove/lookup and a
-35-test suite. There are no moves, rules, graphics or engine yet. The CLI version has been scrapped, so the game
-will be graphical.
+**Where things stand:** Milestones 0 and 1 are done except #17-#20 (SAN, PGN, magic bitboards and pin masks),
+and the core of Milestone 5 is in place: evaluation (#41), search with move ordering and a transposition table
+(#42-#44, plus part of #45), and six bots with difficulty levels and personalities (#49, see [BOTS.md](BOTS.md)).
+Not started: graphics, the engine testing harness (#48) and running the engine on its own thread (#47). The CLI
+version has been scrapped, so the game will be graphical.
 
 **How to read this:**
 - PRs are numbered in a workable order. "Needs" lists the PRs that must land first.
