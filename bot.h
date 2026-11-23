@@ -44,6 +44,10 @@ struct BotSettings {
     int mistakeMargin = 0;
     // How deep the candidate search goes when choosing randomly. Defaults to maxDepth when 0.
     int candidateDepth = 0;
+    // When choosing among candidates, prefer moves a person would find natural: recaptures, developing pieces,
+    // castling, checks. Discourage aimless king walks, early edge-pawn pushes, early queen trips and moving the same
+    // piece twice in the opening. Pure "depth limit plus random noise" doesn't play like a weaker human.
+    bool humanLikeChoice = false;
     // Even full-strength bots vary their first moves: for the first `openingVarietyPlies` plies, moves within
     // `openingVarietyMargin` centipawns of the best are allowed.
     int openingVarietyPlies = 0;
@@ -64,6 +68,10 @@ std::optional<BotSettings> findBot(std::string_view nameOrLevel);
 // Time to spend on a move under a chess clock: a slice of the remaining time plus most of the increment,
 // never more than a quarter of what's left. All values in milliseconds.
 int timeForMove(int remainingMs, int incrementMs, int movesToGo = 0);
+
+// How natural a move looks to a person, as a weight around 1.0 (above 1: more likely to be chosen). Used by
+// bots with humanLikeChoice when they pick among near-best moves.
+double moveNaturalness(const Game& game, Move move);
 
 class Bot {
 public:

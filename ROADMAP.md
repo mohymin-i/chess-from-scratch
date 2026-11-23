@@ -294,6 +294,85 @@ A macOS `.app` with its assets bundled, a Linux build, and a GitHub Actions work
 
 ---
 
+## Milestone 6: Ideas from what players and developers say (researched 2026-11-23)
+
+What people praise and complain about in Lichess, Chess.com and desktop chess programs, and what that means for a
+**desktop-first, offline** app. Sources are listed at the end of this section.
+
+**What players like:** Lichess's clean, fast, ad-free interface with everything free (including analysis); a
+move-confirmation option that prevents misclicks; offline play against the computer (the Lichess mobile app's
+"most requested feature"); Lucas Chess's guided training, where a weak engine points out a better move right after
+you make a weaker one; takebacks, hints, drawing arrows and choosing your color against the computer.
+
+**What players dislike:** ads and paywalled hints or analysis; games lost to connection drops or to switching
+away from the app; bot ratings that don't match how the bots actually play, and bots that "blunder out of
+nothing"; accuracy scores that differ between the app and the website; engine arrows shown by default ("spoilers");
+cheating.
+
+**What developers like and dislike:** Lichess is open source with a public, complete API and a bot API;
+Chess.com's API is read-only and rate-limited. Desktop tools like En Croissant are praised for running several
+engines and importing game databases, but called rough around the edges. Cute Chess is the standard tool for
+engine-vs-engine tournaments, which needs the UCI protocol.
+
+**Principles that follow:** works fully offline; no ads, no accounts, no paywalls; nothing is lost if the app
+closes; analysis is opt-in and never a spoiler; bot strength labels are honest; features are consistent.
+
+**#55 Game review and accuracy** (M) · needs #42
+After a game, analyze every move: the engine's best move, how much the played move lost, a classification (best,
+excellent, good, inaccuracy, mistake, blunder, forced) and an accuracy score per player. The accuracy formula is
+documented and the same everywhere in the app. The same per-move data (centipawn loss, engine-match rate, think
+times) is what the planned lightweight fair-play check will use.
+
+**#56 Human-like weak bots** (S) · needs #49
+Weak bots that pick "natural" moves when they settle for less than the best: recapturing, developing, castling,
+not walking the king or pushing edge pawns early for no reason. Research on human-like engines found that a
+depth-limited strong engine with random noise doesn't play like a weaker human, which matches the "blunders out of
+nothing" complaint.
+
+**#57 Learn from your mistakes** (S) · needs #55
+Turn the mistakes found by game review into practice positions, like Lichess's feature of the same name: the
+position before your mistake, and you try to find the better move.
+
+**#58 Tutor mode** (M) · needs #55, #23
+Optional guidance while playing a bot: after a clear mistake, offer a takeback and show what was better (Lucas
+Chess's most praised training mode). Off by default; using it marks the game as assisted.
+
+**#59 Never lose a game to the app** (S) · needs #16, #18
+Save the game in progress after every move and restore it on the next launch, including after a crash. A desktop
+app has no connection to drop, so this is the main way a game can be lost.
+
+**#60 Honest bot ratings** (S) · needs #48
+Calibrate each bot's displayed rating from engine-vs-engine matches against reference levels, and say clearly that
+ratings are approximate.
+
+**#61 Play quality-of-life** (M) · needs #23
+Move confirmation (optional), premoves, takebacks against bots, choosing your color, hints (a limited number per
+game, marked as assisted), and right-click arrows and square highlights.
+
+**#62 UCI protocol for the engine** (M, decision)
+Lets the engine run inside other chess programs (En Croissant, Cute Chess) and play engine tournaments, which is
+the usual way to measure strength (#48, #60). This is an engine protocol, not a game interface, but it is a small
+command-line program, so it needs a decision given that the CLI version was scrapped.
+
+Sources:
+[Lichess forum: why you prefer Lichess](https://lichess.org/forum/general-chess-discussion/why-you-prefer-lichess-over-chesscom-which-chesscom-features-you-miss-on-lichesscom),
+[Chess.com forum: why is the app so bad compared to Lichess](https://www.chess.com/forum/view/general/why-is-the-chess-com-app-so-bad-compared-to-lichess),
+[Chess.com on Trustpilot](https://www.trustpilot.com/review/chess.com?page=1),
+[Chess.com app on the App Store](https://apps.apple.com/app/id329218549),
+[Lichess mobile app update](https://lichess.org/@/Lichess/blog/lichess-mobile-app-update/VGPcQtN3),
+[Chess.com forum: how realistic are the bot ratings](https://www.chess.com/forum/view/community/how-realistic-are-the-bot-ratings),
+[Chess.com blog: chess bots inaccurate?](https://www.chess.com/blog/Pro8legazzy/chess-bots-inaccurate),
+[Microsoft Research: the human side of AI for chess (Maia)](https://www.microsoft.com/en-us/research/?p=708031),
+[Lichess: introducing Maia](https://lichess.org/blog/X9PUixUAANCqFRSh/introducing-maia-a-human-like-neural-network-chess-engine),
+[Lucas Chess on SourceForge](https://sourceforge.net/projects/lucaschessr/),
+[Lichess blog: learning from mistakes with Lucas Chess](https://lichess.org/@/mullerrj/blog/learning-from-mistakes-when-they-happen-with-lucas-chess/he1cgG3P),
+[En Croissant review (LinuxLinks)](https://www.linuxlinks.com/en-croissant-gui-chess-toolkit/),
+[Cute Chess (Chess Programming Wiki)](https://www.chessprogramming.org/Cute_Chess),
+[Lichess API](https://lichess.org/api),
+[Chess.com forum: rate limiting](https://www.chess.com/clubs/forum/view/rate-limiting?page=2).
+
+---
+
 ## Suggested order
 
 1. **#1–#5:** fix and harden what exists.
