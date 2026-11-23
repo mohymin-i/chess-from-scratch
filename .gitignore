@@ -1,6 +1,9 @@
 # Build output
 build*/
 
+# Editor caches (clangd writes its index here)
+.cache/
+
 # macOS
 .DS_Store
 
