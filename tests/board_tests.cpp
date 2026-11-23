@@ -11,12 +11,6 @@ constexpr Color COLORS[] = {Color::White, Color::Black};
 constexpr PieceType TYPES[] = {PieceType::Pawn, PieceType::Knight, PieceType::Bishop,
                                PieceType::Rook, PieceType::Queen,  PieceType::King};
 
-Square sq(const char* name) {
-    const Square s = squareFromString(name);
-    if (s == NO_SQUARE) throw std::invalid_argument(std::string("bad square name in test: ") + name);
-    return s;
-}
-
 Piece piece(PieceType type, Color color) { return Piece{type, color}; }
 
 // Mirrors a bitboard top-to-bottom (rank 1 <-> rank 8). Written independently of the Board code.
@@ -95,19 +89,19 @@ TEST(board_black_setup_mirrors_white) {
 TEST(board_starting_pieces_on_named_squares) {
     const Board board;
     // Queen on her own color, king on e-file: the usual setup mistakes.
-    CHECK(board.pieceAt(sq("d1")) == piece(PieceType::Queen, Color::White));
-    CHECK(board.pieceAt(sq("e1")) == piece(PieceType::King, Color::White));
-    CHECK(board.pieceAt(sq("d8")) == piece(PieceType::Queen, Color::Black));
-    CHECK(board.pieceAt(sq("e8")) == piece(PieceType::King, Color::Black));
+    CHECK(board.pieceAt(D1) == piece(PieceType::Queen, Color::White));
+    CHECK(board.pieceAt(E1) == piece(PieceType::King, Color::White));
+    CHECK(board.pieceAt(D8) == piece(PieceType::Queen, Color::Black));
+    CHECK(board.pieceAt(E8) == piece(PieceType::King, Color::Black));
 
-    CHECK(board.pieceAt(sq("a1")) == piece(PieceType::Rook, Color::White));
-    CHECK(board.pieceAt(sq("b1")) == piece(PieceType::Knight, Color::White));
-    CHECK(board.pieceAt(sq("c1")) == piece(PieceType::Bishop, Color::White));
-    CHECK(board.pieceAt(sq("f1")) == piece(PieceType::Bishop, Color::White));
-    CHECK(board.pieceAt(sq("g1")) == piece(PieceType::Knight, Color::White));
-    CHECK(board.pieceAt(sq("h1")) == piece(PieceType::Rook, Color::White));
-    CHECK(board.pieceAt(sq("a8")) == piece(PieceType::Rook, Color::Black));
-    CHECK(board.pieceAt(sq("g8")) == piece(PieceType::Knight, Color::Black));
+    CHECK(board.pieceAt(A1) == piece(PieceType::Rook, Color::White));
+    CHECK(board.pieceAt(B1) == piece(PieceType::Knight, Color::White));
+    CHECK(board.pieceAt(C1) == piece(PieceType::Bishop, Color::White));
+    CHECK(board.pieceAt(F1) == piece(PieceType::Bishop, Color::White));
+    CHECK(board.pieceAt(G1) == piece(PieceType::Knight, Color::White));
+    CHECK(board.pieceAt(H1) == piece(PieceType::Rook, Color::White));
+    CHECK(board.pieceAt(A8) == piece(PieceType::Rook, Color::Black));
+    CHECK(board.pieceAt(G8) == piece(PieceType::Knight, Color::Black));
 
     for (int file = 0; file < 8; ++file) {
         CHECK(board.pieceAt(makeSquare(file, 1)) == piece(PieceType::Pawn, Color::White));
@@ -117,7 +111,7 @@ TEST(board_starting_pieces_on_named_squares) {
 
 TEST(board_middle_ranks_start_empty_and_back_ranks_full) {
     const Board board;
-    for (Square s = 0; s < NUM_SQUARES; ++s) {
+    for (Square s = A1; s <= H8; ++s) {
         const bool shouldBeEmpty = rankOf(s) >= 2 && rankOf(s) <= 5;
         CHECK_EQ(board.pieceAt(s).has_value(), !shouldBeEmpty);
     }
@@ -151,7 +145,7 @@ TEST(board_empty_has_no_pieces) {
     CHECK_EQ(board.occupancy(), 0ULL);
     for (Color c : COLORS)
         for (PieceType t : TYPES) CHECK_EQ(board.pieces(c, t), 0ULL);
-    for (Square s = 0; s < NUM_SQUARES; ++s) CHECK(!board.pieceAt(s).has_value());
+    for (Square s = A1; s <= H8; ++s) CHECK(!board.pieceAt(s).has_value());
     CHECK(board.sideToMove() == Color::White);
     CHECK_EQ(board.castlingRights(), 0);
     CHECK_EQ(board.enPassantSquare(), NO_SQUARE);
@@ -170,16 +164,16 @@ TEST(board_to_string_renders_empty_board) {
 
 TEST(board_place_piece_on_empty_square) {
     Board board = Board::empty();
-    board.placePiece(piece(PieceType::Knight, Color::White), sq("e4"));
-    CHECK(board.pieceAt(sq("e4")) == piece(PieceType::Knight, Color::White));
-    CHECK_EQ(board.pieces(Color::White, PieceType::Knight), squareBit(sq("e4")));
-    CHECK_EQ(board.occupancy(Color::White), squareBit(sq("e4")));
+    board.placePiece(piece(PieceType::Knight, Color::White), E4);
+    CHECK(board.pieceAt(E4) == piece(PieceType::Knight, Color::White));
+    CHECK_EQ(board.pieces(Color::White, PieceType::Knight), squareBit(E4));
+    CHECK_EQ(board.occupancy(Color::White), squareBit(E4));
     CHECK_EQ(board.occupancy(Color::Black), 0ULL);
     CHECK(board.isConsistent());
 }
 
 TEST(board_place_piece_on_every_square) {
-    for (Square s = 0; s < NUM_SQUARES; ++s) {
+    for (Square s = A1; s <= H8; ++s) {
         Board board = Board::empty();
         board.placePiece(piece(PieceType::Bishop, Color::Black), s);
         CHECK(board.pieceAt(s) == piece(PieceType::Bishop, Color::Black));
@@ -190,8 +184,8 @@ TEST(board_place_piece_on_every_square) {
 
 TEST(board_placing_on_occupied_square_replaces_the_piece) {
     Board board;
-    board.placePiece(piece(PieceType::Queen, Color::White), sq("d8")); // "captures" the black queen
-    CHECK(board.pieceAt(sq("d8")) == piece(PieceType::Queen, Color::White));
+    board.placePiece(piece(PieceType::Queen, Color::White), D8); // "captures" the black queen
+    CHECK(board.pieceAt(D8) == piece(PieceType::Queen, Color::White));
     CHECK_EQ(board.pieces(Color::Black, PieceType::Queen), 0ULL);
     CHECK_EQ(popCount(board.pieces(Color::White, PieceType::Queen)), 2);
     CHECK_EQ(popCount(board.occupancy(Color::White)), 17);
@@ -201,16 +195,16 @@ TEST(board_placing_on_occupied_square_replaces_the_piece) {
 
 TEST(board_placing_same_piece_twice_is_idempotent) {
     Board board = Board::empty();
-    board.placePiece(piece(PieceType::Rook, Color::White), sq("a1"));
-    board.placePiece(piece(PieceType::Rook, Color::White), sq("a1"));
+    board.placePiece(piece(PieceType::Rook, Color::White), A1);
+    board.placePiece(piece(PieceType::Rook, Color::White), A1);
     CHECK_EQ(popCount(board.occupancy()), 1);
     CHECK(board.isConsistent());
 }
 
 TEST(board_remove_piece_clears_square) {
     Board board;
-    board.removePiece(sq("e2"));
-    CHECK(!board.pieceAt(sq("e2")).has_value());
+    board.removePiece(E2);
+    CHECK(!board.pieceAt(E2).has_value());
     CHECK_EQ(popCount(board.pieces(Color::White, PieceType::Pawn)), 7);
     CHECK_EQ(popCount(board.occupancy(Color::White)), 15);
     CHECK_EQ(popCount(board.occupancy(Color::Black)), 16);
@@ -220,13 +214,13 @@ TEST(board_remove_piece_clears_square) {
 TEST(board_removing_from_empty_square_changes_nothing) {
     Board board;
     const Board before = board;
-    board.removePiece(sq("e4"));
+    board.removePiece(E4);
     CHECK(sameBoard(board, before));
 }
 
 TEST(board_remove_every_piece_leaves_empty_board) {
     Board board;
-    for (Square s = 0; s < NUM_SQUARES; ++s) board.removePiece(s);
+    for (Square s = A1; s <= H8; ++s) board.removePiece(s);
     CHECK_EQ(board.occupancy(), 0ULL);
     CHECK(sameBoard(board, Board::empty()));
     CHECK(board.isConsistent());
@@ -235,10 +229,10 @@ TEST(board_remove_every_piece_leaves_empty_board) {
 TEST(board_copies_are_independent) {
     const Board original;
     Board copy = original;
-    copy.removePiece(sq("e1"));
-    copy.placePiece(piece(PieceType::Queen, Color::Black), sq("e4"));
-    CHECK(original.pieceAt(sq("e1")) == piece(PieceType::King, Color::White));
-    CHECK(!original.pieceAt(sq("e4")).has_value());
+    copy.removePiece(E1);
+    copy.placePiece(piece(PieceType::Queen, Color::Black), E4);
+    CHECK(original.pieceAt(E1) == piece(PieceType::King, Color::White));
+    CHECK(!original.pieceAt(E4).has_value());
     CHECK(sameBoard(original, Board()));
 }
 
@@ -246,7 +240,8 @@ TEST(board_copies_are_independent) {
 
 TEST(board_invalid_squares_throw_and_leave_board_unchanged) {
     Board board;
-    for (Square bad : {NO_SQUARE, 64, 100, -100, INT_MIN, INT_MAX}) {
+    for (int raw : {-1, 64, 100, -100, INT_MIN, INT_MAX}) {
+        const auto bad = static_cast<Square>(raw);
         CHECK_THROWS(board.pieceAt(bad), std::out_of_range);
         CHECK_THROWS(board.placePiece(piece(PieceType::Pawn, Color::White), bad), std::out_of_range);
         CHECK_THROWS(board.removePiece(bad), std::out_of_range);
@@ -270,7 +265,7 @@ TEST(board_random_operations_match_simple_model) {
     std::optional<Piece> model[NUM_SQUARES];
 
     for (int step = 0; step < 20000; ++step) {
-        const Square s = squareDist(rng);
+        const auto s = static_cast<Square>(squareDist(rng));
         if (actionDist(rng) < 6) {
             const Piece p{static_cast<PieceType>(typeDist(rng)), static_cast<Color>(colorDist(rng))};
             board.placePiece(p, s);
@@ -285,7 +280,7 @@ TEST(board_random_operations_match_simple_model) {
 
         if (step % 250 == 0) {
             Bitboard expected[NUM_COLORS] = {};
-            for (Square t = 0; t < NUM_SQUARES; ++t) {
+            for (Square t = A1; t <= H8; ++t) {
                 CHECK(board.pieceAt(t) == model[t]);
                 if (model[t]) expected[static_cast<int>(model[t]->color)] |= squareBit(t);
             }
@@ -300,7 +295,7 @@ TEST(board_random_operations_match_simple_model) {
 namespace {
 // Checks pieceAt() against the bitboards directly, without trusting isConsistent().
 bool lookupMatchesBitboards(const Board& board) {
-    for (Square s = 0; s < NUM_SQUARES; ++s) {
+    for (Square s = A1; s <= H8; ++s) {
         std::optional<Piece> fromBitboards;
         for (Color c : COLORS)
             for (PieceType t : TYPES)
@@ -314,13 +309,13 @@ bool lookupMatchesBitboards(const Board& board) {
 TEST(board_lookup_matches_bitboards_after_every_kind_of_change) {
     Board board;
     CHECK(lookupMatchesBitboards(board));
-    board.removePiece(sq("e2"));                                         // remove
+    board.removePiece(E2);                                         // remove
     CHECK(lookupMatchesBitboards(board));
-    board.placePiece(piece(PieceType::Pawn, Color::White), sq("e4"));    // place on empty
+    board.placePiece(piece(PieceType::Pawn, Color::White), E4);    // place on empty
     CHECK(lookupMatchesBitboards(board));
-    board.placePiece(piece(PieceType::Knight, Color::Black), sq("e4"));  // replace other color
+    board.placePiece(piece(PieceType::Knight, Color::Black), E4);  // replace other color
     CHECK(lookupMatchesBitboards(board));
-    board.placePiece(piece(PieceType::Bishop, Color::Black), sq("e4"));  // replace same color
+    board.placePiece(piece(PieceType::Bishop, Color::Black), E4);  // replace same color
     CHECK(lookupMatchesBitboards(board));
     CHECK(lookupMatchesBitboards(Board::empty()));
 }
@@ -337,7 +332,7 @@ TEST(board_unchecked_operations_match_checked_ones) {
     Board checked;
     Board unchecked;
     for (int step = 0; step < 5000; ++step) {
-        const Square s = squareDist(rng);
+        const auto s = static_cast<Square>(squareDist(rng));
         if (actionDist(rng) == 0) {
             const Piece p{static_cast<PieceType>(typeDist(rng)), static_cast<Color>(colorDist(rng))};
             checked.placePiece(p, s);
@@ -365,12 +360,12 @@ TEST(board_state_setters_store_values) {
     Board board;
     board.setSideToMove(Color::Black);
     board.setCastlingRights(WHITE_KINGSIDE | BLACK_QUEENSIDE);
-    board.setEnPassantSquare(sq("e3"));
+    board.setEnPassantSquare(E3);
     board.setHalfmoveClock(37);
     board.setFullmoveNumber(52);
     CHECK(board.sideToMove() == Color::Black);
     CHECK_EQ(board.castlingRights(), WHITE_KINGSIDE | BLACK_QUEENSIDE);
-    CHECK_EQ(board.enPassantSquare(), sq("e3"));
+    CHECK_EQ(board.enPassantSquare(), E3);
     CHECK_EQ(board.halfmoveClock(), 37);
     CHECK_EQ(board.fullmoveNumber(), 52);
     CHECK(board.isConsistent());
@@ -398,7 +393,7 @@ TEST(board_unknown_castling_flags_are_rejected) {
 
 TEST(board_en_passant_square_must_be_on_rank_3_or_6) {
     Board board;
-    for (Square s = 0; s < NUM_SQUARES; ++s) {
+    for (Square s = A1; s <= H8; ++s) {
         if (rankOf(s) == 2 || rankOf(s) == 5) {
             board.setEnPassantSquare(s);
             CHECK_EQ(board.enPassantSquare(), s);
@@ -408,8 +403,8 @@ TEST(board_en_passant_square_must_be_on_rank_3_or_6) {
             CHECK_EQ(board.enPassantSquare(), NO_SQUARE); // unchanged
         }
     }
-    for (Square bad : {-2, 64, INT_MIN, INT_MAX}) {
-        CHECK_THROWS(board.setEnPassantSquare(bad), std::out_of_range);
+    for (int raw : {-2, 64, INT_MIN, INT_MAX}) {
+        CHECK_THROWS(board.setEnPassantSquare(static_cast<Square>(raw)), std::out_of_range);
     }
     CHECK(board.isConsistent());
 }
@@ -432,12 +427,12 @@ TEST(board_move_counters_reject_impossible_values) {
 TEST(board_copies_keep_game_state) {
     Board board;
     board.setSideToMove(Color::Black);
-    board.setEnPassantSquare(sq("d6"));
+    board.setEnPassantSquare(D6);
     board.setHalfmoveClock(3);
     board.setFullmoveNumber(9);
     const Board copy = board;
     CHECK(copy.sideToMove() == Color::Black);
-    CHECK_EQ(copy.enPassantSquare(), sq("d6"));
+    CHECK_EQ(copy.enPassantSquare(), D6);
     CHECK_EQ(copy.halfmoveClock(), 3);
     CHECK_EQ(copy.fullmoveNumber(), 9);
 }

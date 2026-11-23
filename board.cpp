@@ -97,7 +97,7 @@ bool Board::isConsistent() const {
         if (colorUnion != occupancy_[c]) return false;
     }
     // With no overlaps (checked above), this makes the mailbox and the bitboards an exact match.
-    for (Square sq = 0; sq < NUM_SQUARES; ++sq) {
+    for (Square sq = A1; sq <= H8; ++sq) {
         const Bitboard bit = squareBit(sq);
         const std::optional<Piece>& piece = mailbox_[sq];
         if (piece) {
