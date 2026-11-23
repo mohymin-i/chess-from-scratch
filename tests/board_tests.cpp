@@ -324,3 +324,30 @@ TEST(board_lookup_matches_bitboards_after_every_kind_of_change) {
     CHECK(lookupMatchesBitboards(board));
     CHECK(lookupMatchesBitboards(Board::empty()));
 }
+
+// ---------- Unchecked fast paths ----------
+
+TEST(board_unchecked_operations_match_checked_ones) {
+    std::mt19937 rng(42);
+    std::uniform_int_distribution<int> squareDist(0, NUM_SQUARES - 1);
+    std::uniform_int_distribution<int> typeDist(0, NUM_PIECE_TYPES - 1);
+    std::uniform_int_distribution<int> colorDist(0, NUM_COLORS - 1);
+    std::uniform_int_distribution<int> actionDist(0, 1);
+
+    Board checked;
+    Board unchecked;
+    for (int step = 0; step < 5000; ++step) {
+        const Square s = squareDist(rng);
+        if (actionDist(rng) == 0) {
+            const Piece p{static_cast<PieceType>(typeDist(rng)), static_cast<Color>(colorDist(rng))};
+            checked.placePiece(p, s);
+            unchecked.placePieceUnchecked(p, s);
+        } else {
+            checked.removePiece(s);
+            unchecked.removePieceUnchecked(s);
+        }
+        CHECK(unchecked.pieceAtUnchecked(s) == checked.pieceAt(s));
+        CHECK(unchecked.isConsistent());
+    }
+    CHECK(sameBoard(checked, unchecked));
+}

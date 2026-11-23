@@ -56,26 +56,17 @@ void Board::checkSquare(Square sq) {
 
 std::optional<Piece> Board::pieceAt(Square sq) const {
     checkSquare(sq);
-    return mailbox_[sq];
+    return pieceAtUnchecked(sq);
 }
 
 void Board::placePiece(Piece piece, Square sq) {
-    removePiece(sq); // also validates sq
-    const Bitboard bit = squareBit(sq);
-    pieces_[idx(piece.color)][idx(piece.type)] |= bit;
-    occupancy_[idx(piece.color)] |= bit;
-    mailbox_[sq] = piece;
+    checkSquare(sq);
+    placePieceUnchecked(piece, sq);
 }
 
 void Board::removePiece(Square sq) {
     checkSquare(sq);
-    const std::optional<Piece> old = mailbox_[sq];
-    if (!old) return;
-    // The mailbox says exactly which bitboard holds this square, so only that one is touched.
-    const Bitboard keep = ~squareBit(sq);
-    pieces_[idx(old->color)][idx(old->type)] &= keep;
-    occupancy_[idx(old->color)] &= keep;
-    mailbox_[sq].reset();
+    removePieceUnchecked(sq);
 }
 
 std::string Board::toString() const {
@@ -84,7 +75,7 @@ std::string Board::toString() const {
     for (int rank = 7; rank >= 0; --rank) {
         out += static_cast<char>('1' + rank);
         for (int file = 0; file < 8; ++file) {
-            const auto piece = pieceAt(makeSquare(file, rank));
+            const auto piece = pieceAtUnchecked(makeSquare(file, rank));
             out += ' ';
             out += piece ? pieceToChar(*piece) : '.';
         }

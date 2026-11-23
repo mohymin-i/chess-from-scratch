@@ -2,6 +2,7 @@
 #define CHESS_FROM_SCRATCH_BOARD_H
 
 #include <bit>
+#include <cassert>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -47,10 +48,35 @@ public:
     Bitboard occupancy(Color color) const { return occupancy_[idx(color)]; }
     Bitboard occupancy() const { return occupancy_[0] | occupancy_[1]; }
 
+    // Checked versions for squares that come from outside (files, the GUI, tests).
     // All three throw std::out_of_range for an invalid square.
     std::optional<Piece> pieceAt(Square sq) const;
     void placePiece(Piece piece, Square sq); // replaces whatever was on sq
     void removePiece(Square sq);             // does nothing if sq is empty
+
+    // Unchecked versions for hot loops (move generation, search) where the square is known to be valid.
+    // They skip the bounds check; an invalid square is a bug, caught by assert in debug builds.
+    std::optional<Piece> pieceAtUnchecked(Square sq) const {
+        assert(isValidSquare(sq));
+        return mailbox_[sq];
+    }
+    void placePieceUnchecked(Piece piece, Square sq) {
+        removePieceUnchecked(sq);
+        const Bitboard bit = squareBit(sq);
+        pieces_[idx(piece.color)][idx(piece.type)] |= bit;
+        occupancy_[idx(piece.color)] |= bit;
+        mailbox_[sq] = piece;
+    }
+    void removePieceUnchecked(Square sq) {
+        assert(isValidSquare(sq));
+        const std::optional<Piece> old = mailbox_[sq];
+        if (!old) return;
+        // The mailbox says exactly which bitboard holds this square, so only that one is touched.
+        const Bitboard keep = ~squareBit(sq);
+        pieces_[idx(old->color)][idx(old->type)] &= keep;
+        occupancy_[idx(old->color)] &= keep;
+        mailbox_[sq].reset();
+    }
 
     Color sideToMove() const { return sideToMove_; }
     std::uint8_t castlingRights() const { return castlingRights_; }
