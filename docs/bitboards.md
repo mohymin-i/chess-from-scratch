@@ -17,7 +17,7 @@ _This file contains my notes for understanding and implementing bitboards_
 Squares use **little-endian rank-file** mapping, the convention most chess programming references use:
 bit 0 is a1, bit 7 is h1, bit 8 is a2, ..., bit 63 is h8. In other words, `square = rank * 8 + file`
 (both counted from 0). White starts on the low bits and black on the high bits.
-In code, squares are the named constants `A1` … `H8` from `board.h`.
+In code, squares are the named constants `A1` … `H8` from `src/board.h`.
 
 ```
 8 | 56 57 58 59 60 61 62 63

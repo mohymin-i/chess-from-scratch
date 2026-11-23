@@ -14,14 +14,14 @@ The chess engine is in place; the graphical game comes next.
 - **Engine:** alpha-beta search with quiescence, a transposition table, move ordering and pruning, and a hand-tuned
   evaluation.
 - **Bots:** six difficulty levels with different playing styles, from a beginner-friendly but still tricky level 1
-  to full strength. See [BOTS.md](BOTS.md).
+  to full strength. See [docs/BOTS.md](docs/BOTS.md).
 - **Saved games and review:** SAN and PGN (with per-move think times), and a post-game review with accuracy scores,
   move labels from "best" to "blunder", and your mistakes turned into practice positions.
 
 - **Export for analysis:** games, positions and comparison tables in the formats other chess software reads (see
   below).
 
-See [ROADMAP.md](ROADMAP.md) for the full plan.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the full plan.
 
 ## Export formats
 
