@@ -52,6 +52,10 @@ struct MoveAnnotation {
 };
 
 struct PgnWriteOptions {
+    // Declared so that a braced list of tags, as in toPgn(game, {{"White", "Me"}}), can only mean the PgnTags
+    // overload. Without it GCC finds the call ambiguous, since a braced list could also build these options.
+    PgnWriteOptions() = default;
+
     PgnTags tags; // added to, or overriding, the standard tags
     // Writes the TimeControl tag and, from the recorded think times, the [%clk] clock after each move.
     std::optional<TimeControl> timeControl;
