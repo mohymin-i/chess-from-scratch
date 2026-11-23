@@ -83,6 +83,7 @@ _Done when:_ for every move in many positions, make followed by unmake leaves th
 **#12 Check detection and legal moves** (M) · needs #11
 `isSquareAttacked`, `inCheck`, and removing moves that leave the king in check. Edge cases: you can't castle out
 of, through or into check, and an en passant capture can expose your king along the rank when both pawns leave it.
+Also make `Board::fromFen` reject positions where the side that just moved is in check, which #6 can't detect yet.
 
 **#13 Perft test suite** (M) · needs #12
 Count every position reachable to depth N from the standard test positions (the start position, "Kiwipete" and
