@@ -18,7 +18,23 @@ The chess engine is in place; the graphical game comes next.
 - **Saved games and review:** SAN and PGN (with per-move think times), and a post-game review with accuracy scores,
   move labels from "best" to "blunder", and your mistakes turned into practice positions.
 
+- **Export for analysis:** games, positions and comparison tables in the formats other chess software reads (see
+  below).
+
 See [ROADMAP.md](ROADMAP.md) for the full plan.
+
+## Export formats
+
+Games can be exported for analysis in Lichess, ChessBase, En Croissant, Scid or any other chess program, and
+compared side by side in a spreadsheet:
+
+| What | Format | Details |
+|---|---|---|
+| Games | PGN | Standard tags, `TimeControl` (`"300+3"`), `Termination` (`"normal"`, `"time forfeit"`), `Date`/`UTCDate`/`UTCTime`; `SetUp`/`FEN` for custom starts; many games in one file |
+| Time | PGN comments | `[%clk 0:04:58]` clock after each move and `[%emt 0:00:05]` time spent; both are read back on import, and Lichess-style files with only `[%clk]` get their move times worked out |
+| Analysis | PGN | `[%eval 0.35]` / `[%eval #-3]` from white's side, `$6` `$2` `$4` for ?! ? ??, a comment like "Mistake. Nf3 was best." and the better line as a variation |
+| Positions | FEN, EPD | FEN for any move; EPD sets with `bm`, `am`, `ce`, `dm`, `id`, `c0`, `hmvc`, `fmvn` (for example, just the positions before your mistakes) |
+| Comparison | CSV | One row per game: players, result, how it ended, time control, length, accuracy, average centipawn loss, mistakes and seconds per move for each side |
 
 ## Running the tests
 

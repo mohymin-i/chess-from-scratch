@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <random>
 #include <sstream>
 #include <string>
@@ -167,8 +168,9 @@ TEST(pgn_move_times) {
     CHECK(game.playUci("e7e5", 61'250));
     CHECK(game.playUci("g1f3", 3'723'000));
     CHECK(game.playUci("b8c6")); // no time recorded
-    const std::string pgn = toPgn(game);
-    CHECK(pgn.find("1. e4 {[%emt 0:00:05]} e5 {[%emt 0:01:01.25]} 2. Nf3 {[%emt 1:02:03]} Nc6 *") !=
+    std::string pgn = toPgn(game);
+    std::replace(pgn.begin(), pgn.end(), '\n', ' '); // compare without line wrapping
+    CHECK(pgn.find("1. e4 { [%emt 0:00:05] } e5 { [%emt 0:01:01.25] } 2. Nf3 { [%emt 1:02:03] } Nc6 *") !=
           std::string::npos);
     const PgnGame back = parsePgn(pgn).at(0);
     CHECK(back.game.moveTimes() == game.moveTimes());

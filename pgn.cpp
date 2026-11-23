@@ -1,5 +1,6 @@
 #include "pgn.h"
 
+#include <algorithm>
 #include <cctype>
 #include <optional>
 
@@ -19,69 +20,45 @@ std::string escape(const std::string& value) {
     return out;
 }
 
-// Elapsed move time in the "[%emt H:MM:SS]" comment format, with milliseconds only when needed.
-std::string formatEmt(int ms) {
-    const int h = ms / 3'600'000;
-    const int m = ms / 60'000 % 60;
-    const int sec = ms / 1000 % 60;
-    const int frac = ms % 1000;
-    std::string out = std::to_string(h) + ":" + (m < 10 ? "0" : "") + std::to_string(m) + ":" + (sec < 10 ? "0" : "") +
-                      std::to_string(sec);
-    if (frac) {
-        std::string f = std::to_string(frac);
-        f.insert(0, 3 - f.size(), '0');
-        while (f.back() == '0') f.pop_back();
-        out += "." + f;
+// The value of an embedded command like "[%clk 0:04:58]" inside a comment, or nullopt if it isn't there. Any
+// whitespace (including a line break from wrapping) may separate the name from the value.
+std::optional<std::string_view> commandValue(std::string_view comment, std::string_view name) {
+    const auto isSpace = [](char c) { return std::isspace(static_cast<unsigned char>(c)) != 0; };
+    const std::string key = "[%" + std::string(name);
+    for (std::size_t at = comment.find(key); at != std::string_view::npos; at = comment.find(key, at + 1)) {
+        std::string_view rest = comment.substr(at + key.size());
+        if (rest.empty() || !isSpace(rest.front())) continue; // "[%clkx" is a different command
+        const std::size_t end = rest.find(']');
+        if (end == std::string_view::npos) return std::nullopt;
+        rest = rest.substr(0, end);
+        while (!rest.empty() && isSpace(rest.front())) rest.remove_prefix(1);
+        while (!rest.empty() && isSpace(rest.back())) rest.remove_suffix(1);
+        return rest;
     }
-    return out;
-}
-
-// Parses the H:MM:SS(.fff) after "[%emt " in a comment. Returns nullopt if there isn't a well-formed one.
-std::optional<int> parseEmt(std::string_view comment) {
-    const std::size_t at = comment.find("[%emt ");
-    if (at == std::string_view::npos) return std::nullopt;
-    std::string_view rest = comment.substr(at + 6);
-    const std::size_t end = rest.find(']');
-    if (end == std::string_view::npos) return std::nullopt;
-    rest = rest.substr(0, end);
-    long long parts[3] = {0, 0, 0};
-    int part = 0;
-    int fracMs = 0;
-    int fracDigits = 0;
-    bool inFraction = false;
-    bool sawDigit = false;
-    for (const char c : rest) {
-        if (std::isdigit(static_cast<unsigned char>(c))) {
-            sawDigit = true;
-            if (inFraction) {
-                if (fracDigits < 3) {
-                    fracMs = fracMs * 10 + (c - '0');
-                    ++fracDigits;
-                }
-            } else {
-                parts[part] = parts[part] * 10 + (c - '0');
-                if (parts[part] > 1'000'000) return std::nullopt;
-            }
-        } else if (c == ':' && !inFraction && part < 2) {
-            ++part;
-        } else if (c == '.' && !inFraction && part == 2) {
-            inFraction = true;
-        } else {
-            return std::nullopt;
-        }
-    }
-    if (!sawDigit || part != 2) return std::nullopt;
-    while (fracDigits < 3) {
-        fracMs *= 10;
-        ++fracDigits;
-    }
-    const long long total = ((parts[0] * 60 + parts[1]) * 60 + parts[2]) * 1000 + fracMs;
-    if (total > 1'000'000'000) return std::nullopt;
-    return static_cast<int>(total);
+    return std::nullopt;
 }
 
 bool isResult(std::string_view token) {
     return token == "1-0" || token == "0-1" || token == "1/2-1/2" || token == "*";
+}
+
+// Fills in missing think times from [%clk] values: what a player's clock lost on a move, plus the increment.
+void deriveTimesFromClocks(PgnGame& g) {
+    const std::size_t n = g.game.moves().size();
+    if (g.clocks.size() != n) return;
+    const int increment = g.timeControl ? g.timeControl->incrementMs : 0;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (g.game.moveTimes()[i] || !g.clocks[i]) continue;
+        std::optional<int> before;
+        if (i >= 2) {
+            before = g.clocks[i - 2];
+        } else if (g.timeControl) {
+            before = g.timeControl->baseMs; // each side's first move starts from the full base time
+        }
+        if (!before) continue;
+        const int spent = *before - *g.clocks[i] + increment;
+        if (spent >= 0) g.game.setMoveTime(i, spent);
+    }
 }
 
 class Parser {
@@ -98,11 +75,7 @@ public:
                 readTag();
             } else if (c == '{') {
                 const std::string_view body = readComment();
-                if (hasMoves_) {
-                    if (const std::optional<int> ms = parseEmt(body)) {
-                        current_.game.setMoveTime(current_.game.moves().size() - 1, ms);
-                    }
-                }
+                if (hasMoves_) applyComment(body);
             } else if (c == ';' || (c == '%' && atLineStart())) {
                 skipLine(); // a ';' comment, or a '%' escape line: both run to the end of the line
             } else if (c == '(') {
@@ -155,6 +128,17 @@ private:
             fail("comment '{' is never closed");
         }
         return text_.substr(start, pos_++ - start);
+    }
+
+    // [%emt] and [%clk] in a comment belong to the move just played.
+    void applyComment(std::string_view body) {
+        const std::size_t last = current_.game.moves().size() - 1;
+        if (const auto emt = commandValue(body, "emt")) {
+            if (const std::optional<int> ms = parseClock(*emt)) current_.game.setMoveTime(last, ms);
+        }
+        if (const auto clk = commandValue(body, "clk")) {
+            if (const std::optional<int> ms = parseClock(*clk)) current_.clocks[last] = ms;
+        }
     }
 
     void skipVariation() {
@@ -243,6 +227,7 @@ private:
                  (b.sideToMove() == Color::White ? " for white" : " for black"));
         }
         game.play(*move);
+        current_.clocks.emplace_back();
         hasMoves_ = true;
     }
 
@@ -270,9 +255,12 @@ private:
         if (result.empty()) result = current_.tag("Result");
         if (!isResult(result)) result = "*";
         current_.result = result;
+        current_.timeControl = TimeControl::fromPgnTag(current_.tag("TimeControl"));
+        deriveTimesFromClocks(current_);
         if (!game.status().isOver()) {
-            if (result == "1-0") game.resign(Color::Black);
-            if (result == "0-1") game.resign(Color::White);
+            const bool flagged = current_.tag("Termination") == "time forfeit";
+            if (result == "1-0") flagged ? game.timeout(Color::Black) : game.resign(Color::Black);
+            if (result == "0-1") flagged ? game.timeout(Color::White) : game.resign(Color::White);
             if (result == "1/2-1/2") game.agreeDraw();
         }
         games_.push_back(std::move(current_));
@@ -290,7 +278,114 @@ private:
     bool hasMoves_ = false;
 };
 
+// SAN for a line of moves starting at `board`, with move numbers: "12... Nf6 13. Bxc6 dxc6". Stops at the first
+// move that isn't legal, so a stale line can't produce a broken file.
+std::string lineToSan(Board board, const std::vector<Move>& line) {
+    std::string out;
+    bool first = true;
+    for (const Move m : line) {
+        MoveList legal;
+        generateLegal(board, legal);
+        if (!legal.contains(m)) break;
+        if (!out.empty()) out += ' ';
+        if (board.sideToMove() == Color::White) {
+            out += std::to_string(board.fullmoveNumber()) + ". ";
+        } else if (first) {
+            out += std::to_string(board.fullmoveNumber()) + "... ";
+        }
+        out += toSan(board, m);
+        board.makeMove(m);
+        first = false;
+    }
+    return out;
+}
+
 } // namespace
+
+std::string TimeControl::toPgnTag() const {
+    const std::string base = std::to_string(std::max(0, baseMs) / 1000);
+    return incrementMs > 0 ? base + "+" + std::to_string(incrementMs / 1000) : base;
+}
+
+std::optional<TimeControl> TimeControl::fromPgnTag(std::string_view tag) {
+    const auto number = [](std::string_view s) -> std::optional<int> {
+        if (s.empty() || s.size() > 7) return std::nullopt;
+        int v = 0;
+        for (const char c : s) {
+            if (!std::isdigit(static_cast<unsigned char>(c))) return std::nullopt;
+            v = v * 10 + (c - '0');
+        }
+        return v;
+    };
+    const std::size_t plus = tag.find('+');
+    const std::optional<int> base = number(tag.substr(0, plus));
+    if (!base || *base == 0) return std::nullopt;
+    TimeControl tc{*base * 1000, 0};
+    if (plus != std::string_view::npos) {
+        const std::optional<int> inc = number(tag.substr(plus + 1));
+        if (!inc) return std::nullopt;
+        tc.incrementMs = *inc * 1000;
+    }
+    return tc;
+}
+
+std::string formatClock(int ms) {
+    ms = std::max(0, ms);
+    const int h = ms / 3'600'000;
+    const int m = ms / 60'000 % 60;
+    const int sec = ms / 1000 % 60;
+    const int frac = ms % 1000;
+    std::string out = std::to_string(h) + ":" + (m < 10 ? "0" : "") + std::to_string(m) + ":" + (sec < 10 ? "0" : "") +
+                      std::to_string(sec);
+    if (frac) {
+        std::string f = std::to_string(frac);
+        f.insert(0, 3 - f.size(), '0');
+        while (f.back() == '0') f.pop_back();
+        out += "." + f;
+    }
+    return out;
+}
+
+std::optional<int> parseClock(std::string_view text) {
+    long long parts[3] = {0, 0, 0};
+    int part = 0;
+    int fracMs = 0;
+    int fracDigits = 0;
+    bool inFraction = false;
+    bool digitInPart = false;
+    for (const char c : text) {
+        if (std::isdigit(static_cast<unsigned char>(c))) {
+            digitInPart = true;
+            if (inFraction) {
+                if (fracDigits < 3) {
+                    fracMs = fracMs * 10 + (c - '0');
+                    ++fracDigits;
+                }
+            } else {
+                parts[part] = parts[part] * 10 + (c - '0');
+                if (parts[part] > 1'000'000) return std::nullopt;
+            }
+        } else if (c == ':' && !inFraction && part < 2 && digitInPart) {
+            ++part;
+            digitInPart = false;
+        } else if (c == '.' && !inFraction && part == 2 && digitInPart) {
+            inFraction = true;
+            digitInPart = false; // the fraction needs its own digits
+        } else {
+            return std::nullopt;
+        }
+    }
+    // Three parts, each with digits, and a fraction (if any) with at least one digit.
+    if (part != 2 || !digitInPart) return std::nullopt;
+    if (parts[1] > 59 || parts[2] > 59) return std::nullopt;
+    while (fracDigits < 3) {
+        fracMs *= 10;
+        ++fracDigits;
+    }
+    const long long total = ((parts[0] * 60 + parts[1]) * 60 + parts[2]) * 1000 + fracMs;
+    if (total > 1'000'000'000) return std::nullopt;
+    return static_cast<int>(total);
+}
 
 std::vector<PgnGame> parsePgn(std::string_view text) { return Parser(text).run(); }
 
@@ -310,15 +405,25 @@ std::string resultToken(const GameStatus& status) {
     return "*";
 }
 
-std::string toPgn(const Game& game, const PgnTags& extra) {
+std::string toPgn(const Game& game, const PgnTags& tags) {
+    PgnWriteOptions options;
+    options.tags = tags;
+    return toPgn(game, options);
+}
+
+std::string toPgn(const Game& game, const PgnWriteOptions& options) {
     PgnTags tags;
     for (int i = 0; i < 7; ++i) tags.emplace_back(ROSTER[i], ROSTER_DEFAULT[i]);
-    tags[6].second = resultToken(game.status());
+    const GameStatus status = game.status();
+    tags[6].second = resultToken(status);
     if (!(game.startingBoard() == Board())) {
         tags.emplace_back("SetUp", "1");
         tags.emplace_back("FEN", game.startingBoard().toFen());
     }
-    for (const auto& [name, value] : extra) {
+    if (options.timeControl) tags.emplace_back("TimeControl", options.timeControl->toPgnTag());
+    if (status.isOver()) tags.emplace_back("Termination", status.reason == GameEndReason::Timeout ? "time forfeit"
+                                                                                                    : "normal");
+    for (const auto& [name, value] : options.tags) {
         bool replaced = false;
         for (auto& [n, v] : tags) {
             if (n == name) {
@@ -333,23 +438,72 @@ std::string toPgn(const Game& game, const PgnTags& extra) {
     for (const auto& [name, value] : tags) out += "[" + name + " \"" + escape(value) + "\"]\n";
     out += '\n';
 
+    // Each side's clock, while it can still be worked out from the recorded think times.
+    std::optional<int> clock[2];
+    if (options.timeControl && options.clocks) clock[0] = clock[1] = options.timeControl->baseMs;
+
     std::vector<std::string> words;
     Board board = game.startingBoard();
     for (std::size_t i = 0; i < game.moves().size(); ++i) {
         const Move m = game.moves()[i];
+        const int side = static_cast<int>(board.sideToMove());
         if (board.sideToMove() == Color::White) {
             words.push_back(std::to_string(board.fullmoveNumber()) + ".");
         } else if (i == 0) {
             words.push_back(std::to_string(board.fullmoveNumber()) + "...");
         }
         words.push_back(toSan(board, m));
-        if (const std::optional<int> ms = game.moveTimes()[i]) words.push_back("{[%emt " + formatEmt(*ms) + "]}");
+
+        const MoveAnnotation* note = i < options.annotations.size() ? &options.annotations[i] : nullptr;
+        if (note && note->nag > 0) words.push_back("$" + std::to_string(note->nag));
+
+        const std::optional<int> spent = game.moveTimes()[i];
+        std::string commands;
+        if (note && !note->eval.empty()) commands += " [%eval " + note->eval + "]";
+        if (clock[side]) {
+            if (spent) {
+                clock[side] = std::max(0, *clock[side] - *spent) + options.timeControl->incrementMs;
+                commands += " [%clk " + formatClock(*clock[side]) + "]";
+            } else {
+                clock[side].reset(); // unknown from here on
+            }
+        }
+        if (spent && options.elapsed) commands += " [%emt " + formatClock(*spent) + "]";
+        if (!commands.empty()) words.push_back("{" + commands + " }");
+        if (note && !note->comment.empty()) {
+            std::string text = note->comment;
+            std::replace(text.begin(), text.end(), '}', ')'); // a '}' would end the comment early
+            words.push_back("{ " + text + " }");
+        }
+        if (note && !note->variation.empty()) {
+            const std::string line = lineToSan(board, note->variation);
+            if (!line.empty()) words.push_back("(" + line + ")");
+        }
         board.makeMove(m);
     }
     words.push_back(tags[6].second); // the result, even if a caller overrode it
 
+    // Wrap at spaces, including the spaces inside comments and variations: in PGN movetext a line break means the
+    // same as a space, so long comments can't push a line past 80 columns. Embedded commands like
+    // "[%clk 0:04:58]" are never split, because other programs often expect each one on a single line.
+    std::vector<std::string> pieces;
+    for (const std::string& word : words) {
+        std::string piece;
+        int brackets = 0;
+        for (const char c : word) {
+            if (c == '[') ++brackets;
+            if (c == ']' && brackets > 0) --brackets;
+            if (c == ' ' && brackets == 0) {
+                if (!piece.empty()) pieces.push_back(piece);
+                piece.clear();
+            } else {
+                piece += c;
+            }
+        }
+        if (!piece.empty()) pieces.push_back(piece);
+    }
     std::size_t lineLength = 0;
-    for (const std::string& w : words) {
+    for (const std::string& w : pieces) {
         if (lineLength > 0 && lineLength + 1 + w.size() > 80) {
             out += '\n';
             lineLength = 0;
@@ -361,5 +515,15 @@ std::string toPgn(const Game& game, const PgnTags& extra) {
         lineLength += w.size();
     }
     out += '\n';
+    return out;
+}
+
+std::string joinPgn(const std::vector<std::string>& games) {
+    std::string out;
+    for (const std::string& g : games) {
+        if (!out.empty()) out += '\n';
+        out += g;
+        if (!g.empty() && g.back() != '\n') out += '\n';
+    }
     return out;
 }
