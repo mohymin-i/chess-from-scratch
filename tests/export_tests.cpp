@@ -332,7 +332,8 @@ TEST(export_summary_csv) {
     CHECK_EQ(static_cast<int>(std::count(rows[0].begin(), rows[0].end(), ',')), 20); // 21 columns
     CHECK(has(rows[1], "?,2026.11.23,\"Smith, Jo\",\"Pebble \"\"L1\"\"\",1-0,resignation,60,2,,"));
     CHECK(has(rows[1], ",1.5,4.0")); // seconds per move for white and black
-    CHECK(has(rows[2], "?,????.??.??,?,?,*,,-,1,rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1,,,,,,,,,,,,"));
+    const std::string blackFirstFen = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1";
+    CHECK(has(rows[2], "?,????.??.??,?,?,*,,-,1," + blackFirstFen + ",,,,,,,,,,,,"));
 }
 
 TEST(export_termination_text) {
