@@ -80,7 +80,17 @@ public:
 
     Color sideToMove() const { return sideToMove_; }
     std::uint8_t castlingRights() const { return castlingRights_; }
-    Square enPassantSquare() const { return enPassant_; }
+    Square enPassantSquare() const { return enPassant_; } // square a pawn just skipped over, or NO_SQUARE
+    int halfmoveClock() const { return halfmoveClock_; }   // moves since the last capture or pawn move (50-move rule)
+    int fullmoveNumber() const { return fullmoveNumber_; } // starts at 1, goes up after each black move
+
+    // Setters reject impossible values and leave the board unchanged when they throw.
+    void setSideToMove(Color color) { sideToMove_ = color; }
+    void setCastlingRights(std::uint8_t rights); // std::invalid_argument unless a combination of CastlingRight flags
+    void setEnPassantSquare(Square sq);          // NO_SQUARE or a rank 3/6 square; std::out_of_range off the board,
+                                                 // std::invalid_argument on any other rank
+    void setHalfmoveClock(int clock);            // std::invalid_argument if negative
+    void setFullmoveNumber(int number);          // std::invalid_argument if less than 1
 
     std::string toString() const;
 
@@ -94,6 +104,7 @@ private:
     static constexpr int idx(Color c) { return static_cast<int>(c); }
     static constexpr int idx(PieceType t) { return static_cast<int>(t); }
     static void checkSquare(Square sq);
+    static bool isValidEnPassantSquare(Square sq);
 
     Bitboard pieces_[NUM_COLORS][NUM_PIECE_TYPES] = {};
     Bitboard occupancy_[NUM_COLORS] = {}; // kept up to date on every change so lookups are one AND
@@ -103,6 +114,8 @@ private:
     Color sideToMove_ = Color::White;
     std::uint8_t castlingRights_ = 0;
     Square enPassant_ = NO_SQUARE;
+    int halfmoveClock_ = 0;
+    int fullmoveNumber_ = 1;
 };
 
 #endif //CHESS_FROM_SCRATCH_BOARD_H

@@ -351,3 +351,93 @@ TEST(board_unchecked_operations_match_checked_ones) {
     }
     CHECK(sameBoard(checked, unchecked));
 }
+
+// ---------- Game-state fields ----------
+
+TEST(board_move_counters_start_at_fen_defaults) {
+    for (const Board& board : {Board(), Board::empty()}) {
+        CHECK_EQ(board.halfmoveClock(), 0);
+        CHECK_EQ(board.fullmoveNumber(), 1);
+    }
+}
+
+TEST(board_state_setters_store_values) {
+    Board board;
+    board.setSideToMove(Color::Black);
+    board.setCastlingRights(WHITE_KINGSIDE | BLACK_QUEENSIDE);
+    board.setEnPassantSquare(sq("e3"));
+    board.setHalfmoveClock(37);
+    board.setFullmoveNumber(52);
+    CHECK(board.sideToMove() == Color::Black);
+    CHECK_EQ(board.castlingRights(), WHITE_KINGSIDE | BLACK_QUEENSIDE);
+    CHECK_EQ(board.enPassantSquare(), sq("e3"));
+    CHECK_EQ(board.halfmoveClock(), 37);
+    CHECK_EQ(board.fullmoveNumber(), 52);
+    CHECK(board.isConsistent());
+
+    board.setEnPassantSquare(NO_SQUARE);
+    CHECK_EQ(board.enPassantSquare(), NO_SQUARE);
+}
+
+TEST(board_every_castling_combination_is_accepted) {
+    Board board;
+    for (int rights = 0; rights <= ALL_CASTLING; ++rights) {
+        board.setCastlingRights(static_cast<std::uint8_t>(rights));
+        CHECK_EQ(board.castlingRights(), rights);
+        CHECK(board.isConsistent());
+    }
+}
+
+TEST(board_unknown_castling_flags_are_rejected) {
+    Board board;
+    for (int bad : {16, 31, 128, 255}) {
+        CHECK_THROWS(board.setCastlingRights(static_cast<std::uint8_t>(bad)), std::invalid_argument);
+        CHECK_EQ(board.castlingRights(), ALL_CASTLING); // unchanged
+    }
+}
+
+TEST(board_en_passant_square_must_be_on_rank_3_or_6) {
+    Board board;
+    for (Square s = 0; s < NUM_SQUARES; ++s) {
+        if (rankOf(s) == 2 || rankOf(s) == 5) {
+            board.setEnPassantSquare(s);
+            CHECK_EQ(board.enPassantSquare(), s);
+        } else {
+            board.setEnPassantSquare(NO_SQUARE);
+            CHECK_THROWS(board.setEnPassantSquare(s), std::invalid_argument);
+            CHECK_EQ(board.enPassantSquare(), NO_SQUARE); // unchanged
+        }
+    }
+    for (Square bad : {-2, 64, INT_MIN, INT_MAX}) {
+        CHECK_THROWS(board.setEnPassantSquare(bad), std::out_of_range);
+    }
+    CHECK(board.isConsistent());
+}
+
+TEST(board_move_counters_reject_impossible_values) {
+    Board board;
+    board.setHalfmoveClock(0);
+    board.setHalfmoveClock(150);
+    CHECK_THROWS(board.setHalfmoveClock(-1), std::invalid_argument);
+    CHECK_THROWS(board.setHalfmoveClock(INT_MIN), std::invalid_argument);
+    CHECK_EQ(board.halfmoveClock(), 150);
+
+    board.setFullmoveNumber(1);
+    board.setFullmoveNumber(INT_MAX);
+    CHECK_THROWS(board.setFullmoveNumber(0), std::invalid_argument);
+    CHECK_THROWS(board.setFullmoveNumber(-5), std::invalid_argument);
+    CHECK_EQ(board.fullmoveNumber(), INT_MAX);
+}
+
+TEST(board_copies_keep_game_state) {
+    Board board;
+    board.setSideToMove(Color::Black);
+    board.setEnPassantSquare(sq("d6"));
+    board.setHalfmoveClock(3);
+    board.setFullmoveNumber(9);
+    const Board copy = board;
+    CHECK(copy.sideToMove() == Color::Black);
+    CHECK_EQ(copy.enPassantSquare(), sq("d6"));
+    CHECK_EQ(copy.halfmoveClock(), 3);
+    CHECK_EQ(copy.fullmoveNumber(), 9);
+}
