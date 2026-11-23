@@ -106,7 +106,42 @@ bool Board::isConsistent() const {
             return false;
         }
     }
-    if (enPassant_ != NO_SQUARE && !isValidSquare(enPassant_)) return false;
+    if (enPassant_ != NO_SQUARE && !isValidEnPassantSquare(enPassant_)) return false;
     if (castlingRights_ & ~ALL_CASTLING) return false;
+    if (halfmoveClock_ < 0 || fullmoveNumber_ < 1) return false;
     return true;
+}
+
+bool Board::isValidEnPassantSquare(Square sq) {
+    // After a double push the skipped square is on rank 3 (white pushed) or rank 6 (black pushed).
+    return isValidSquare(sq) && (rankOf(sq) == 2 || rankOf(sq) == 5);
+}
+
+void Board::setCastlingRights(std::uint8_t rights) {
+    if (rights & ~ALL_CASTLING) {
+        throw std::invalid_argument("setCastlingRights: unknown flags in " + std::to_string(rights));
+    }
+    castlingRights_ = rights;
+}
+
+void Board::setEnPassantSquare(Square sq) {
+    if (sq == NO_SQUARE) {
+        enPassant_ = NO_SQUARE;
+        return;
+    }
+    checkSquare(sq); // std::out_of_range for a square off the board
+    if (!isValidEnPassantSquare(sq)) {
+        throw std::invalid_argument("setEnPassantSquare: " + squareToString(sq) + " is not on rank 3 or 6");
+    }
+    enPassant_ = sq;
+}
+
+void Board::setHalfmoveClock(int clock) {
+    if (clock < 0) throw std::invalid_argument("setHalfmoveClock: negative value " + std::to_string(clock));
+    halfmoveClock_ = clock;
+}
+
+void Board::setFullmoveNumber(int number) {
+    if (number < 1) throw std::invalid_argument("setFullmoveNumber: must be at least 1, got " + std::to_string(number));
+    fullmoveNumber_ = number;
 }
