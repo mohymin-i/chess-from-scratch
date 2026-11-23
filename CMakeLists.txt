@@ -36,7 +36,8 @@ add_executable(chess_tests
         tests/engine_tests.cpp
         tests/notation_tests.cpp
         tests/analysis_tests.cpp
-        tests/savegame_tests.cpp)
+        tests/savegame_tests.cpp
+        tests/edge_case_tests.cpp)
 target_link_libraries(chess_tests PRIVATE chess_core)
 
 add_test(NAME unit_tests COMMAND chess_tests)

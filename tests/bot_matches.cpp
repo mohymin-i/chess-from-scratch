@@ -3,7 +3,9 @@
 // every run on a given platform. Runs as its own ctest entry labeled "slow".
 #include <string>
 
+#include "analysis.h"
 #include "bot.h"
+#include "pgn.h"
 #include "test_framework.h"
 
 namespace {
@@ -51,3 +53,34 @@ void checkStronger(int strongLevel, int weakLevel) {
 
 TEST(bot_matches_level_2_beats_level_1) { checkStronger(2, 1); }
 TEST(bot_matches_level_3_beats_level_2) { checkStronger(3, 2); }
+
+// End to end: a whole bot game with think times survives PGN and gets a sane review.
+TEST(bot_matches_full_game_through_pgn_and_review) {
+    Bot white(*findBot("Juniper"), 5);
+    Bot black(*findBot("Pebble"), 6);
+    Game game;
+    int fakeClock = 0;
+    while (!game.status().isOver() && game.moves().size() < 200) {
+        Bot& mover = game.board().sideToMove() == Color::White ? white : black;
+        const Move m = mover.chooseMove(game);
+        fakeClock += 1000 + static_cast<int>(game.moves().size()) * 37 % 5000;
+        CHECK(game.play(m, fakeClock % 7000));
+    }
+    const std::string text = toPgn(game, {{"White", "Juniper"}, {"Black", "Pebble"}});
+    const std::vector<PgnGame> back = parsePgn(text);
+    CHECK_EQ(static_cast<int>(back.size()), 1);
+    CHECK(back[0].game.moves() == game.moves());
+    CHECK(back[0].game.moveTimes() == game.moveTimes());
+    CHECK(back[0].game.status().result == game.status().result);
+
+    AnalysisSettings settings;
+    settings.depth = 4;
+    settings.hashMegabytes = 8;
+    const GameAnalysis review = analyzeGame(back[0].game, settings);
+    CHECK_EQ(review.moves.size(), game.moves().size());
+    for (const PlayerSummary* p : {&review.white, &review.black}) {
+        CHECK(p->accuracy >= 0 && p->accuracy <= 100);
+        CHECK(p->engineMatchRate >= 0 && p->engineMatchRate <= 1);
+        CHECK(p->averageCentipawnLoss >= 0);
+    }
+}
