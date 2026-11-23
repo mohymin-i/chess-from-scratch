@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cstdint>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 
@@ -57,10 +58,30 @@ enum CastlingRight : std::uint8_t {
     ALL_CASTLING = 15,
 };
 
+inline constexpr std::string_view START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+// Thrown by Board::fromFen. what() says which field is wrong and why.
+class FenError : public std::invalid_argument {
+public:
+    using std::invalid_argument::invalid_argument;
+};
+
 class Board {
 public:
     Board();              // standard starting position
     static Board empty(); // no pieces, white to move, no castling rights
+
+    // Parses a FEN string. The halfmove clock and fullmove number may be left off (they default to 0 and 1).
+    // Throws FenError for malformed text and for positions the engine can't handle: not exactly one king per
+    // side, kings next to each other, pawns on rank 1 or 8, a castling right without the king and rook on their
+    // home squares, or an en passant square with no pawn that could have just double-pushed past it.
+    // It either returns a complete board or throws; it never returns a half-loaded one.
+    static Board fromFen(std::string_view fen);
+    // Always writes all six fields, with castling rights in KQkq order.
+    std::string toFen() const;
+
+    // Same pieces and same game state, including the clocks.
+    bool operator==(const Board&) const = default;
 
     Bitboard pieces(Color color, PieceType type) const { return pieces_[idx(color)][idx(type)]; }
     Bitboard occupancy(Color color) const { return occupancy_[idx(color)]; }
