@@ -17,8 +17,22 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
 endif()
 
 # Game logic lives in a library so anything built later and the tests share exactly the same code.
-add_library(chess_core board.cpp fen.cpp move.cpp movegen.cpp game.cpp san.cpp pgn.cpp eval.cpp search.cpp bot.cpp analysis.cpp savegame.cpp gameexport.cpp piece.cpp)
-target_include_directories(chess_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+add_library(chess_core
+        src/board.cpp
+        src/fen.cpp
+        src/move.cpp
+        src/movegen.cpp
+        src/game.cpp
+        src/san.cpp
+        src/pgn.cpp
+        src/eval.cpp
+        src/search.cpp
+        src/bot.cpp
+        src/analysis.cpp
+        src/savegame.cpp
+        src/gameexport.cpp
+        src/piece.cpp)
+target_include_directories(chess_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # ---- Tests: run with `ctest --test-dir <build dir> --output-on-failure` ----
 enable_testing()

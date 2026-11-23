@@ -47,7 +47,7 @@ half-move clock or full-move number at all. FEN (#6) and making moves (#11) need
 (`A1` … `H8`) makes code and tests easier to read and catches mix-ups between square, file and rank.
 
 **#5 Repo housekeeping** (S)
-Add a `LICENSE`, finish or delete `notes.md` (it stops mid-sentence), and update the README's progress section. Add
+Add a `LICENSE`, finish or delete `docs/notes.md` (it stops mid-sentence), and update the README's progress section. Add
 CI on GitHub Actions that builds and runs the tests on macOS and Linux, normally and with sanitizers, so every later
 PR shows pass/fail automatically. Add `.clang-format` and `.clang-tidy` configs and turn on format-on-save in
 `.vscode/settings.json`.

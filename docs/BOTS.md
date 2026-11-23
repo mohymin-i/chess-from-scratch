@@ -1,8 +1,8 @@
 # Bots
 
-Six built-in computer opponents, from `bot.h`. All of them run the same engine: an alpha-beta search with
-quiescence search, a transposition table and the usual pruning (see `search.h`), plus a hand-tuned evaluation
-(`eval.h`). None of them is a "grab the biggest capture" greedy player. Even the weakest looks three moves ahead
+Six built-in computer opponents, from `src/bot.h`. All of them run the same engine: an alpha-beta search with
+quiescence search, a transposition table and the usual pruning (see `src/search.h`), plus a hand-tuned evaluation
+(`src/eval.h`). None of them is a "grab the biggest capture" greedy player. Even the weakest looks three moves ahead
 and resolves every capture sequence, so it won't leave pieces hanging and will punish yours.
 
 What makes the lower levels beatable is that they deliberately settle for a *good* move instead of the *best* one,
