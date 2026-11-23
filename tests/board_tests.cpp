@@ -294,3 +294,33 @@ TEST(board_random_operations_match_simple_model) {
         }
     }
 }
+
+// ---------- Square lookup vs bitboards ----------
+
+namespace {
+// Checks pieceAt() against the bitboards directly, without trusting isConsistent().
+bool lookupMatchesBitboards(const Board& board) {
+    for (Square s = 0; s < NUM_SQUARES; ++s) {
+        std::optional<Piece> fromBitboards;
+        for (Color c : COLORS)
+            for (PieceType t : TYPES)
+                if (board.pieces(c, t) & squareBit(s)) fromBitboards = Piece{t, c};
+        if (board.pieceAt(s) != fromBitboards) return false;
+    }
+    return true;
+}
+} // namespace
+
+TEST(board_lookup_matches_bitboards_after_every_kind_of_change) {
+    Board board;
+    CHECK(lookupMatchesBitboards(board));
+    board.removePiece(sq("e2"));                                         // remove
+    CHECK(lookupMatchesBitboards(board));
+    board.placePiece(piece(PieceType::Pawn, Color::White), sq("e4"));    // place on empty
+    CHECK(lookupMatchesBitboards(board));
+    board.placePiece(piece(PieceType::Knight, Color::Black), sq("e4"));  // replace other color
+    CHECK(lookupMatchesBitboards(board));
+    board.placePiece(piece(PieceType::Bishop, Color::Black), sq("e4"));  // replace same color
+    CHECK(lookupMatchesBitboards(board));
+    CHECK(lookupMatchesBitboards(Board::empty()));
+}

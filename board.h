@@ -58,7 +58,7 @@ public:
 
     std::string toString() const;
 
-    // True if no square holds two pieces and the cached occupancy matches the piece bitboards.
+    // True if no square holds two pieces, and the cached occupancy and mailbox both match the piece bitboards.
     bool isConsistent() const;
 
 private:
@@ -71,6 +71,9 @@ private:
 
     Bitboard pieces_[NUM_COLORS][NUM_PIECE_TYPES] = {};
     Bitboard occupancy_[NUM_COLORS] = {}; // kept up to date on every change so lookups are one AND
+    // The same position indexed by square ("mailbox"): bitboards answer "where are the knights?",
+    // this answers "what is on e4?" in one read. Every change updates both.
+    std::optional<Piece> mailbox_[NUM_SQUARES] = {};
     Color sideToMove_ = Color::White;
     std::uint8_t castlingRights_ = 0;
     Square enPassant_ = NO_SQUARE;
