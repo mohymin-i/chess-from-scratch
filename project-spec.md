@@ -20,7 +20,7 @@ What I can't use
 
 ## Plans
 
-The goal is to make an CLI chess game with more advanced features like an evaluation engine and bots to play against, especially bots that are pretty difficult. 
+The goal is to make a chess game with more advanced features like an evaluation engine and bots to play against, especially bots that are pretty difficult. 
 
 
 

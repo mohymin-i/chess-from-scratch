@@ -1,0 +1,296 @@
+#include <climits>
+#include <optional>
+#include <random>
+#include <stdexcept>
+
+#include "board.h"
+#include "test_framework.h"
+
+namespace {
+constexpr Color COLORS[] = {Color::White, Color::Black};
+constexpr PieceType TYPES[] = {PieceType::Pawn, PieceType::Knight, PieceType::Bishop,
+                               PieceType::Rook, PieceType::Queen,  PieceType::King};
+
+Square sq(const char* name) {
+    const Square s = squareFromString(name);
+    if (s == NO_SQUARE) throw std::invalid_argument(std::string("bad square name in test: ") + name);
+    return s;
+}
+
+Piece piece(PieceType type, Color color) { return Piece{type, color}; }
+
+// Mirrors a bitboard top-to-bottom (rank 1 <-> rank 8). Written independently of the Board code.
+Bitboard flipVertical(Bitboard b) {
+    Bitboard result = 0;
+    for (int rank = 0; rank < 8; ++rank) {
+        result |= ((b >> (8 * rank)) & 0xFFULL) << (8 * (7 - rank));
+    }
+    return result;
+}
+
+bool sameBoard(const Board& a, const Board& b) {
+    for (Color c : COLORS)
+        for (PieceType t : TYPES)
+            if (a.pieces(c, t) != b.pieces(c, t)) return false;
+    return a.occupancy(Color::White) == b.occupancy(Color::White) &&
+           a.occupancy(Color::Black) == b.occupancy(Color::Black);
+}
+} // namespace
+
+// ---------- Starting position ----------
+
+TEST(board_starting_bitboards_match_documented_values) {
+    const Board board;
+    CHECK_EQ(board.pieces(Color::White, PieceType::Pawn),   0x000000000000FF00ULL);
+    CHECK_EQ(board.pieces(Color::White, PieceType::Knight), 0x0000000000000042ULL);
+    CHECK_EQ(board.pieces(Color::White, PieceType::Bishop), 0x0000000000000024ULL);
+    CHECK_EQ(board.pieces(Color::White, PieceType::Rook),   0x0000000000000081ULL);
+    CHECK_EQ(board.pieces(Color::White, PieceType::Queen),  0x0000000000000008ULL);
+    CHECK_EQ(board.pieces(Color::White, PieceType::King),   0x0000000000000010ULL);
+    CHECK_EQ(board.pieces(Color::Black, PieceType::Pawn),   0x00FF000000000000ULL);
+    CHECK_EQ(board.pieces(Color::Black, PieceType::Knight), 0x4200000000000000ULL);
+    CHECK_EQ(board.pieces(Color::Black, PieceType::Bishop), 0x2400000000000000ULL);
+    CHECK_EQ(board.pieces(Color::Black, PieceType::Rook),   0x8100000000000000ULL);
+    CHECK_EQ(board.pieces(Color::Black, PieceType::Queen),  0x0800000000000000ULL);
+    CHECK_EQ(board.pieces(Color::Black, PieceType::King),   0x1000000000000000ULL);
+}
+
+TEST(board_starting_piece_counts) {
+    const Board board;
+    for (Color c : COLORS) {
+        CHECK_EQ(popCount(board.pieces(c, PieceType::Pawn)), 8);
+        CHECK_EQ(popCount(board.pieces(c, PieceType::Knight)), 2);
+        CHECK_EQ(popCount(board.pieces(c, PieceType::Bishop)), 2);
+        CHECK_EQ(popCount(board.pieces(c, PieceType::Rook)), 2);
+        CHECK_EQ(popCount(board.pieces(c, PieceType::Queen)), 1);
+        CHECK_EQ(popCount(board.pieces(c, PieceType::King)), 1);
+        CHECK_EQ(popCount(board.occupancy(c)), 16);
+    }
+}
+
+TEST(board_starting_occupancy) {
+    const Board board;
+    CHECK_EQ(board.occupancy(Color::White), 0x000000000000FFFFULL);
+    CHECK_EQ(board.occupancy(Color::Black), 0xFFFF000000000000ULL);
+    CHECK_EQ(board.occupancy(), 0xFFFF00000000FFFFULL);
+    CHECK_EQ(board.occupancy(Color::White) & board.occupancy(Color::Black), 0ULL);
+}
+
+TEST(board_starting_piece_bitboards_never_overlap) {
+    const Board board;
+    for (Color c1 : COLORS)
+        for (PieceType t1 : TYPES)
+            for (Color c2 : COLORS)
+                for (PieceType t2 : TYPES)
+                    if (c1 != c2 || t1 != t2) CHECK((board.pieces(c1, t1) & board.pieces(c2, t2)) == 0);
+}
+
+TEST(board_black_setup_mirrors_white) {
+    const Board board;
+    for (PieceType t : TYPES) {
+        CHECK_EQ(board.pieces(Color::Black, t), flipVertical(board.pieces(Color::White, t)));
+    }
+}
+
+TEST(board_starting_pieces_on_named_squares) {
+    const Board board;
+    // Queen on her own color, king on e-file: the usual setup mistakes.
+    CHECK(board.pieceAt(sq("d1")) == piece(PieceType::Queen, Color::White));
+    CHECK(board.pieceAt(sq("e1")) == piece(PieceType::King, Color::White));
+    CHECK(board.pieceAt(sq("d8")) == piece(PieceType::Queen, Color::Black));
+    CHECK(board.pieceAt(sq("e8")) == piece(PieceType::King, Color::Black));
+
+    CHECK(board.pieceAt(sq("a1")) == piece(PieceType::Rook, Color::White));
+    CHECK(board.pieceAt(sq("b1")) == piece(PieceType::Knight, Color::White));
+    CHECK(board.pieceAt(sq("c1")) == piece(PieceType::Bishop, Color::White));
+    CHECK(board.pieceAt(sq("f1")) == piece(PieceType::Bishop, Color::White));
+    CHECK(board.pieceAt(sq("g1")) == piece(PieceType::Knight, Color::White));
+    CHECK(board.pieceAt(sq("h1")) == piece(PieceType::Rook, Color::White));
+    CHECK(board.pieceAt(sq("a8")) == piece(PieceType::Rook, Color::Black));
+    CHECK(board.pieceAt(sq("g8")) == piece(PieceType::Knight, Color::Black));
+
+    for (int file = 0; file < 8; ++file) {
+        CHECK(board.pieceAt(makeSquare(file, 1)) == piece(PieceType::Pawn, Color::White));
+        CHECK(board.pieceAt(makeSquare(file, 6)) == piece(PieceType::Pawn, Color::Black));
+    }
+}
+
+TEST(board_middle_ranks_start_empty_and_back_ranks_full) {
+    const Board board;
+    for (Square s = 0; s < NUM_SQUARES; ++s) {
+        const bool shouldBeEmpty = rankOf(s) >= 2 && rankOf(s) <= 5;
+        CHECK_EQ(board.pieceAt(s).has_value(), !shouldBeEmpty);
+    }
+}
+
+TEST(board_starting_game_state) {
+    const Board board;
+    CHECK(board.sideToMove() == Color::White);
+    CHECK_EQ(board.castlingRights(), ALL_CASTLING);
+    CHECK_EQ(board.enPassantSquare(), NO_SQUARE);
+    CHECK(board.isConsistent());
+}
+
+TEST(board_to_string_renders_starting_position) {
+    const Board board;
+    CHECK_EQ(board.toString(), std::string("8 r n b q k b n r\n"
+                                           "7 p p p p p p p p\n"
+                                           "6 . . . . . . . .\n"
+                                           "5 . . . . . . . .\n"
+                                           "4 . . . . . . . .\n"
+                                           "3 . . . . . . . .\n"
+                                           "2 P P P P P P P P\n"
+                                           "1 R N B Q K B N R\n"
+                                           "  a b c d e f g h\n"));
+}
+
+// ---------- Empty board ----------
+
+TEST(board_empty_has_no_pieces) {
+    const Board board = Board::empty();
+    CHECK_EQ(board.occupancy(), 0ULL);
+    for (Color c : COLORS)
+        for (PieceType t : TYPES) CHECK_EQ(board.pieces(c, t), 0ULL);
+    for (Square s = 0; s < NUM_SQUARES; ++s) CHECK(!board.pieceAt(s).has_value());
+    CHECK(board.sideToMove() == Color::White);
+    CHECK_EQ(board.castlingRights(), 0);
+    CHECK_EQ(board.enPassantSquare(), NO_SQUARE);
+    CHECK(board.isConsistent());
+}
+
+TEST(board_to_string_renders_empty_board) {
+    const Board board = Board::empty();
+    std::string expected;
+    for (int rank = 8; rank >= 1; --rank) expected += std::to_string(rank) + " . . . . . . . .\n";
+    expected += "  a b c d e f g h\n";
+    CHECK_EQ(board.toString(), expected);
+}
+
+// ---------- Placing and removing ----------
+
+TEST(board_place_piece_on_empty_square) {
+    Board board = Board::empty();
+    board.placePiece(piece(PieceType::Knight, Color::White), sq("e4"));
+    CHECK(board.pieceAt(sq("e4")) == piece(PieceType::Knight, Color::White));
+    CHECK_EQ(board.pieces(Color::White, PieceType::Knight), squareBit(sq("e4")));
+    CHECK_EQ(board.occupancy(Color::White), squareBit(sq("e4")));
+    CHECK_EQ(board.occupancy(Color::Black), 0ULL);
+    CHECK(board.isConsistent());
+}
+
+TEST(board_place_piece_on_every_square) {
+    for (Square s = 0; s < NUM_SQUARES; ++s) {
+        Board board = Board::empty();
+        board.placePiece(piece(PieceType::Bishop, Color::Black), s);
+        CHECK(board.pieceAt(s) == piece(PieceType::Bishop, Color::Black));
+        CHECK_EQ(board.occupancy(), squareBit(s));
+        CHECK(board.isConsistent());
+    }
+}
+
+TEST(board_placing_on_occupied_square_replaces_the_piece) {
+    Board board;
+    board.placePiece(piece(PieceType::Queen, Color::White), sq("d8")); // "captures" the black queen
+    CHECK(board.pieceAt(sq("d8")) == piece(PieceType::Queen, Color::White));
+    CHECK_EQ(board.pieces(Color::Black, PieceType::Queen), 0ULL);
+    CHECK_EQ(popCount(board.pieces(Color::White, PieceType::Queen)), 2);
+    CHECK_EQ(popCount(board.occupancy(Color::White)), 17);
+    CHECK_EQ(popCount(board.occupancy(Color::Black)), 15);
+    CHECK(board.isConsistent());
+}
+
+TEST(board_placing_same_piece_twice_is_idempotent) {
+    Board board = Board::empty();
+    board.placePiece(piece(PieceType::Rook, Color::White), sq("a1"));
+    board.placePiece(piece(PieceType::Rook, Color::White), sq("a1"));
+    CHECK_EQ(popCount(board.occupancy()), 1);
+    CHECK(board.isConsistent());
+}
+
+TEST(board_remove_piece_clears_square) {
+    Board board;
+    board.removePiece(sq("e2"));
+    CHECK(!board.pieceAt(sq("e2")).has_value());
+    CHECK_EQ(popCount(board.pieces(Color::White, PieceType::Pawn)), 7);
+    CHECK_EQ(popCount(board.occupancy(Color::White)), 15);
+    CHECK_EQ(popCount(board.occupancy(Color::Black)), 16);
+    CHECK(board.isConsistent());
+}
+
+TEST(board_removing_from_empty_square_changes_nothing) {
+    Board board;
+    const Board before = board;
+    board.removePiece(sq("e4"));
+    CHECK(sameBoard(board, before));
+}
+
+TEST(board_remove_every_piece_leaves_empty_board) {
+    Board board;
+    for (Square s = 0; s < NUM_SQUARES; ++s) board.removePiece(s);
+    CHECK_EQ(board.occupancy(), 0ULL);
+    CHECK(sameBoard(board, Board::empty()));
+    CHECK(board.isConsistent());
+}
+
+TEST(board_copies_are_independent) {
+    const Board original;
+    Board copy = original;
+    copy.removePiece(sq("e1"));
+    copy.placePiece(piece(PieceType::Queen, Color::Black), sq("e4"));
+    CHECK(original.pieceAt(sq("e1")) == piece(PieceType::King, Color::White));
+    CHECK(!original.pieceAt(sq("e4")).has_value());
+    CHECK(sameBoard(original, Board()));
+}
+
+// ---------- Bad input must throw, not crash or corrupt the board ----------
+
+TEST(board_invalid_squares_throw_and_leave_board_unchanged) {
+    Board board;
+    for (Square bad : {NO_SQUARE, 64, 100, -100, INT_MIN, INT_MAX}) {
+        CHECK_THROWS(board.pieceAt(bad), std::out_of_range);
+        CHECK_THROWS(board.placePiece(piece(PieceType::Pawn, Color::White), bad), std::out_of_range);
+        CHECK_THROWS(board.removePiece(bad), std::out_of_range);
+    }
+    CHECK(sameBoard(board, Board()));
+    CHECK(board.isConsistent());
+}
+
+// ---------- Stress test ----------
+
+// Thousands of random place/remove operations, checked against a simple 64-square array
+// that is obviously correct. Catches bookkeeping bugs that hand-written cases miss.
+TEST(board_random_operations_match_simple_model) {
+    std::mt19937 rng(20261123); // fixed seed so failures are reproducible
+    std::uniform_int_distribution<int> squareDist(0, NUM_SQUARES - 1);
+    std::uniform_int_distribution<int> typeDist(0, NUM_PIECE_TYPES - 1);
+    std::uniform_int_distribution<int> colorDist(0, NUM_COLORS - 1);
+    std::uniform_int_distribution<int> actionDist(0, 9);
+
+    Board board = Board::empty();
+    std::optional<Piece> model[NUM_SQUARES];
+
+    for (int step = 0; step < 20000; ++step) {
+        const Square s = squareDist(rng);
+        if (actionDist(rng) < 6) {
+            const Piece p{static_cast<PieceType>(typeDist(rng)), static_cast<Color>(colorDist(rng))};
+            board.placePiece(p, s);
+            model[s] = p;
+        } else {
+            board.removePiece(s);
+            model[s].reset();
+        }
+
+        CHECK(board.pieceAt(s) == model[s]);
+        CHECK(board.isConsistent());
+
+        if (step % 250 == 0) {
+            Bitboard expected[NUM_COLORS] = {};
+            for (Square t = 0; t < NUM_SQUARES; ++t) {
+                CHECK(board.pieceAt(t) == model[t]);
+                if (model[t]) expected[static_cast<int>(model[t]->color)] |= squareBit(t);
+            }
+            CHECK_EQ(board.occupancy(Color::White), expected[0]);
+            CHECK_EQ(board.occupancy(Color::Black), expected[1]);
+        }
+    }
+}

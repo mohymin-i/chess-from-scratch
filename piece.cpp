@@ -1,51 +1,22 @@
-#pragma once
+#include "piece.h"
 
-class Board;
+namespace {
+// Indexed by PieceType.
+constexpr char WHITE_LETTERS[NUM_PIECE_TYPES + 1] = "PNBRQK";
 
-class Piece {
-
-private:
-    const int value;
-    const bool white; // false if black
-    int rank;
-    int file;
-    bool captured;
-
-
-public:
-    Piece () {}
-
-    Piece(int rank, int file) {
-
-    }
-
-
-    Piece(int value, bool white, int rank, int file) {
-        captured = false; // defualt to uncaptured
-    }
-};
-
-// this class is probably doing to be the hardest to implement
-class King : public Piece {
-public:
-    bool validMove() {
-        return true;
-    }
-
-    bool move() {
-
-    }
-};
-
-class Pawn : public Piece {
-private:
-    bool firstMove = true;
-    bool enPassant = false;
-
-
-public:
-    bool move()
-    }
+constexpr char toLower(char c) { return static_cast<char>(c - 'A' + 'a'); }
 }
 
+char pieceToChar(Piece piece) {
+    const char letter = WHITE_LETTERS[static_cast<int>(piece.type)];
+    return piece.color == Color::White ? letter : toLower(letter);
+}
 
+std::optional<Piece> pieceFromChar(char c) {
+    for (int i = 0; i < NUM_PIECE_TYPES; ++i) {
+        const auto type = static_cast<PieceType>(i);
+        if (c == WHITE_LETTERS[i]) return Piece{type, Color::White};
+        if (c == toLower(WHITE_LETTERS[i])) return Piece{type, Color::Black};
+    }
+    return std::nullopt;
+}
