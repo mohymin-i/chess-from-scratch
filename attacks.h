@@ -69,7 +69,17 @@ inline constexpr std::array<std::array<Bitboard, NUM_SQUARES>, NUM_COLORS> PAWN 
 
 // The 8 ray directions. The first four go toward higher square numbers, so the nearest blocker on them is the
 // lowest set bit; the last four go toward lower numbers, so it's the highest set bit.
-enum Direction : std::uint8_t { NORTH, EAST, NORTH_EAST, NORTH_WEST, SOUTH, WEST, SOUTH_WEST, SOUTH_EAST, NUM_DIRECTIONS };
+enum Direction : std::uint8_t {
+    NORTH,
+    EAST,
+    NORTH_EAST,
+    NORTH_WEST,
+    SOUTH,
+    WEST,
+    SOUTH_WEST,
+    SOUTH_EAST,
+    NUM_DIRECTIONS,
+};
 constexpr int DIRECTION_DELTAS[NUM_DIRECTIONS][2] = {{0, 1},  {1, 0},  {1, 1},   {-1, 1},
                                                      {0, -1}, {-1, 0}, {-1, -1}, {1, -1}};
 
