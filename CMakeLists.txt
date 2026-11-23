@@ -29,7 +29,8 @@ add_executable(chess_tests
         tests/piece_tests.cpp
         tests/board_tests.cpp
         tests/fen_tests.cpp
-        tests/move_tests.cpp)
+        tests/move_tests.cpp
+        tests/attack_tests.cpp)
 target_link_libraries(chess_tests PRIVATE chess_core)
 
 add_test(NAME unit_tests COMMAND chess_tests)
