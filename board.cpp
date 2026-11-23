@@ -37,7 +37,13 @@ Board::Board() {
     pieces_[idx(Color::Black)][idx(PieceType::King)]   = 0x1000000000000000ULL;
 
     for (int c = 0; c < NUM_COLORS; ++c) {
-        for (int t = 0; t < NUM_PIECE_TYPES; ++t) occupancy_[c] |= pieces_[c][t];
+        for (int t = 0; t < NUM_PIECE_TYPES; ++t) {
+            occupancy_[c] |= pieces_[c][t];
+            // Visit each set bit: countr_zero finds the lowest one, b &= b - 1 clears it.
+            for (Bitboard b = pieces_[c][t]; b; b &= b - 1) {
+                mailbox_[std::countr_zero(b)] = Piece{static_cast<PieceType>(t), static_cast<Color>(c)};
+            }
+        }
     }
     castlingRights_ = ALL_CASTLING;
 }
@@ -50,14 +56,7 @@ void Board::checkSquare(Square sq) {
 
 std::optional<Piece> Board::pieceAt(Square sq) const {
     checkSquare(sq);
-    const Bitboard bit = squareBit(sq);
-    for (int c = 0; c < NUM_COLORS; ++c) {
-        if (!(occupancy_[c] & bit)) continue; // skip a whole color with one test
-        for (int t = 0; t < NUM_PIECE_TYPES; ++t) {
-            if (pieces_[c][t] & bit) return Piece{static_cast<PieceType>(t), static_cast<Color>(c)};
-        }
-    }
-    return std::nullopt;
+    return mailbox_[sq];
 }
 
 void Board::placePiece(Piece piece, Square sq) {
@@ -65,16 +64,18 @@ void Board::placePiece(Piece piece, Square sq) {
     const Bitboard bit = squareBit(sq);
     pieces_[idx(piece.color)][idx(piece.type)] |= bit;
     occupancy_[idx(piece.color)] |= bit;
+    mailbox_[sq] = piece;
 }
 
 void Board::removePiece(Square sq) {
     checkSquare(sq);
+    const std::optional<Piece> old = mailbox_[sq];
+    if (!old) return;
+    // The mailbox says exactly which bitboard holds this square, so only that one is touched.
     const Bitboard keep = ~squareBit(sq);
-    for (int c = 0; c < NUM_COLORS; ++c) {
-        if ((occupancy_[c] & keep) == occupancy_[c]) continue; // this color has nothing on sq
-        for (int t = 0; t < NUM_PIECE_TYPES; ++t) pieces_[c][t] &= keep;
-        occupancy_[c] &= keep;
-    }
+    pieces_[idx(old->color)][idx(old->type)] &= keep;
+    occupancy_[idx(old->color)] &= keep;
+    mailbox_[sq].reset();
 }
 
 std::string Board::toString() const {
@@ -103,6 +104,16 @@ bool Board::isConsistent() const {
             colorUnion |= pieces_[c][t];
         }
         if (colorUnion != occupancy_[c]) return false;
+    }
+    // With no overlaps (checked above), this makes the mailbox and the bitboards an exact match.
+    for (Square sq = 0; sq < NUM_SQUARES; ++sq) {
+        const Bitboard bit = squareBit(sq);
+        const std::optional<Piece>& piece = mailbox_[sq];
+        if (piece) {
+            if (!(pieces_[idx(piece->color)][idx(piece->type)] & bit)) return false;
+        } else if (seen & bit) {
+            return false;
+        }
     }
     if (enPassant_ != NO_SQUARE && !isValidSquare(enPassant_)) return false;
     if (castlingRights_ & ~ALL_CASTLING) return false;
