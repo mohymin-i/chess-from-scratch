@@ -1,6 +1,7 @@
 #include "board.h"
 
 #include <array>
+#include <climits>
 #include <stdexcept>
 
 #include "attacks.h"
@@ -195,7 +196,7 @@ constexpr RookHop rookHopFor(Square kingTo) {
 } // namespace
 
 UndoInfo Board::makeMove(Move move) {
-    UndoInfo undo{std::nullopt, castlingRights_, enPassant_, halfmoveClock_, hash_};
+    UndoInfo undo{std::nullopt, castlingRights_, enPassant_, halfmoveClock_, hash_, fullmoveNumber_};
 
     const Square from = move.from();
     const Square to = move.to();
@@ -208,7 +209,8 @@ UndoInfo Board::makeMove(Move move) {
     if (enPassant_ != NO_SQUARE) hash_ ^= zobrist::KEYS.enPassantFile[fileOf(enPassant_)];
     enPassant_ = NO_SQUARE;
 
-    ++halfmoveClock_;
+    // The counters stop at INT_MAX instead of overflowing (a FEN may hold any int); unmakeMove restores them exactly.
+    if (halfmoveClock_ < INT_MAX) ++halfmoveClock_;
     if (mover.type == PieceType::Pawn) halfmoveClock_ = 0;
 
     if (move.isEnPassant()) {
@@ -245,7 +247,7 @@ UndoInfo Board::makeMove(Move move) {
         castlingRights_ = newRights;
     }
 
-    if (us == Color::Black) ++fullmoveNumber_;
+    if (us == Color::Black && fullmoveNumber_ < INT_MAX) ++fullmoveNumber_;
     sideToMove_ = them;
     hash_ ^= zobrist::KEYS.blackToMove;
     return undo;
@@ -256,7 +258,6 @@ void Board::unmakeMove(Move move, const UndoInfo& undo) {
     const Square to = move.to();
     const Color us = opposite(sideToMove_); // the side that made the move
     sideToMove_ = us;
-    if (us == Color::Black) --fullmoveNumber_;
 
     if (move.isCastle()) {
         const RookHop hop = rookHopFor(to);
@@ -277,14 +278,15 @@ void Board::unmakeMove(Move move, const UndoInfo& undo) {
     castlingRights_ = undo.castlingRights;
     enPassant_ = undo.enPassant;
     halfmoveClock_ = undo.halfmoveClock;
+    fullmoveNumber_ = undo.fullmoveNumber;
     hash_ = undo.hash; // cheaper than undoing each XOR, and exact by construction
 }
 
 UndoInfo Board::makeNullMove() {
-    const UndoInfo undo{std::nullopt, castlingRights_, enPassant_, halfmoveClock_, hash_};
+    const UndoInfo undo{std::nullopt, castlingRights_, enPassant_, halfmoveClock_, hash_, fullmoveNumber_};
     if (enPassant_ != NO_SQUARE) hash_ ^= zobrist::KEYS.enPassantFile[fileOf(enPassant_)];
     enPassant_ = NO_SQUARE;
-    ++halfmoveClock_;
+    if (halfmoveClock_ < INT_MAX) ++halfmoveClock_;
     sideToMove_ = opposite(sideToMove_);
     hash_ ^= zobrist::KEYS.blackToMove;
     return undo;

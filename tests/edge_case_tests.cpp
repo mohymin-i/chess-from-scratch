@@ -1,4 +1,5 @@
 // Extreme and unusual situations that cut across modules.
+#include <climits>
 #include <string>
 
 #include "bot.h"
@@ -90,4 +91,20 @@ TEST(edge_promotions_choose_the_right_piece) {
     // trade. The extra h-pawn keeps the resulting knight ending winning.
     const SearchResult fork = searcher.search(fen("8/4P1k1/3q4/8/8/8/7P/K7 w - - 0 1"), {}, limits);
     CHECK_EQ(toUci(fork.bestMove), std::string("e7e8n"));
+}
+
+// A FEN may carry move counters up to INT_MAX. Playing on must not overflow them (undefined behavior, caught by
+// the sanitizer build), and taking the move back restores them exactly.
+TEST(edge_huge_move_counters_do_not_overflow) {
+    Board board = Board::fromFen("4k3/8/8/8/8/8/8/R3K3 b - - 2147483647 2147483647");
+    const Board before = board;
+    const Move move = *moveFromUci(board, "e8d8");
+    const UndoInfo undo = board.makeMove(move);
+    CHECK_EQ(board.fullmoveNumber(), INT_MAX);
+    CHECK_EQ(board.halfmoveClock(), INT_MAX);
+    board.unmakeMove(move, undo);
+    CHECK(board == before);
+    const UndoInfo nullUndo = board.makeNullMove();
+    board.unmakeNullMove(nullUndo);
+    CHECK(board == before);
 }

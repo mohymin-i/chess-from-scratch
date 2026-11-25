@@ -15,7 +15,25 @@ std::string escape(const std::string& value) {
     std::string out;
     for (const char c : value) {
         if (c == '\\' || c == '"') out += '\\';
-        out += c;
+        // A tag has to fit on one line, so a line break (from a pasted name, say) becomes a space.
+        out += static_cast<unsigned char>(c) < 0x20 ? ' ' : c;
+    }
+    return out;
+}
+
+// The characters a tag name may use after the first, which must be a letter, digit or underscore (PGN 8.1.1).
+bool isTagNameChar(char c) {
+    return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '+' || c == '#' || c == '=' || c == ':' ||
+           c == '-';
+}
+
+// A tag name readers accept: anything else becomes '_' ("Bot level" -> "Bot_level"). Empty if nothing is left.
+std::string tagName(const std::string& name) {
+    std::string out;
+    for (const char c : name) {
+        const bool first = out.empty();
+        const bool ok = first ? std::isalnum(static_cast<unsigned char>(c)) || c == '_' : isTagNameChar(c);
+        out += ok ? c : '_';
     }
     return out;
 }
@@ -98,6 +116,7 @@ public:
     explicit Parser(std::string_view text) : text_(text) {}
 
     std::vector<PgnGame> run() {
+        if (text_.starts_with("\xEF\xBB\xBF")) pos_ = 3; // a UTF-8 byte order mark, as some Windows tools write
         while (true) {
             skipSpace();
             if (pos_ >= text_.size()) break;
@@ -201,9 +220,7 @@ private:
         ++pos_; // '['
         skipSpace();
         std::string name;
-        while (pos_ < text_.size() && (std::isalnum(static_cast<unsigned char>(text_[pos_])) || text_[pos_] == '_')) {
-            name += text_[pos_++];
-        }
+        while (pos_ < text_.size() && isTagNameChar(text_[pos_])) name += text_[pos_++];
         if (name.empty()) fail("tag without a name");
         skipSpace();
         if (pos_ >= text_.size() || text_[pos_] != '"') fail("tag " + name + " has no quoted value");
@@ -249,6 +266,10 @@ private:
         while (!token.empty() && token.front() == '.') token.remove_prefix(1); // "..." on its own
         if (token.empty()) return;
         if (token.find_first_not_of("!?") == std::string_view::npos) return; // annotation like "!?" on its own
+        // "exf6 e.p." written with a space, and evaluation symbols written out ("+-", "-+", "=", "+/-"). A lone "--"
+        // is left alone: it's a null move, which can't be skipped without getting the side to move wrong.
+        if (token == "e.p." || token == "ep") return;
+        if (token != "--" && token.find_first_not_of("+-=/") == std::string_view::npos) return;
 
         Game& game = startedGame();
         if (game.status().isOver()) fail("move " + std::string(token) + " after the game is already over");
@@ -450,7 +471,9 @@ std::string toPgn(const Game& game, const PgnWriteOptions& options) {
     if (options.timeControl) tags.emplace_back("TimeControl", options.timeControl->toPgnTag());
     if (status.isOver()) tags.emplace_back("Termination", status.reason == GameEndReason::Timeout ? "time forfeit"
                                                                                                     : "normal");
-    for (const auto& [name, value] : options.tags) {
+    for (const auto& [rawName, value] : options.tags) {
+        const std::string name = tagName(rawName);
+        if (name.empty()) continue;
         bool replaced = false;
         for (auto& [n, v] : tags) {
             if (n == name) {

@@ -433,3 +433,52 @@ TEST(bot_clock_limits_thinking_time) {
     CHECK(game.legalMoves().contains(m));
     CHECK(ms < 1'500);
 }
+
+// A mate on the 100th half-move wins (the 50-move rule only draws if the last move wasn't checkmate), so the engine
+// must take it instead of drifting into the draw.
+TEST(engine_mates_on_the_fiftieth_move) {
+    Game game(Board::fromFen("7k/Q7/6K1/8/8/8/8/8 w - - 99 80"));
+    Searcher searcher(4);
+    SearchLimits limits;
+    limits.maxDepth = 4;
+    const SearchResult r = searcher.search(game.board(), game.positionHistory(), limits);
+    CHECK(search::isMateScore(r.score) && r.score > 0);
+    CHECK(game.play(r.bestMove));
+    CHECK(game.status() == (GameStatus{GameResult::WhiteWins, GameEndReason::Checkmate}));
+}
+
+// With one legal move there's nothing to choose, but the score still has to be right for an evaluation display.
+// Here black's queen has just checked on g2 and Kxg2 is forced: a dead draw, not "black is a queen up".
+TEST(search_scores_a_forced_move_by_what_it_leads_to) {
+    const Board board = Board::fromFen("4k3/8/8/8/8/8/6q1/7K w - - 0 1");
+    Searcher searcher(4);
+    SearchLimits limits;
+    limits.maxDepth = 20;
+    const SearchResult r = searcher.search(board, {}, limits);
+    CHECK_EQ(toUci(r.bestMove), std::string("h1g2"));
+    CHECK_EQ(r.score, 0);
+    CHECK(!r.pv.empty() && r.pv[0] == r.bestMove);
+    // A forced move into a mate is scored as the mate: Kh2 is the only move, then Qe5+ g3 Qb2#.
+    const SearchResult mated = searcher.search(Board::fromFen("6k1/8/8/8/8/2q4P/6P1/r6K w - - 0 1"), {}, limits);
+    CHECK_EQ(toUci(mated.bestMove), std::string("h1h2"));
+    CHECK_EQ(mated.score, -(search::MATE - 4));
+}
+
+// Randomness among near-best moves must not stop the weak bots finishing a won ending: against a bare king they
+// used to wander until the 50-move rule even with a queen up.
+TEST(bot_weak_levels_mate_a_bare_king) {
+    for (const char* start : {"8/8/8/4k3/8/8/8/1Q2K3 w - - 0 1", "8/8/8/4k3/8/8/8/R3K3 w - - 0 1"}) {
+        for (const int level : {1, 2}) {
+            for (std::uint64_t seed = 0; seed < 2; ++seed) {
+                Bot attacker(*findBot(std::to_string(level)), seed);
+                Bot defender(*findBot("Juniper"), seed + 50);
+                Game game(Board::fromFen(start));
+                while (!game.status().isOver()) {
+                    Bot& mover = game.board().sideToMove() == Color::White ? attacker : defender;
+                    CHECK(game.play(mover.chooseMove(game)));
+                }
+                CHECK(game.status() == (GameStatus{GameResult::WhiteWins, GameEndReason::Checkmate}));
+            }
+        }
+    }
+}

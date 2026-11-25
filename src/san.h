@@ -16,7 +16,8 @@ std::string toSan(const Board& board, Move move);
 
 // Reads SAN and returns the matching legal move, or nullopt if no legal move matches or more than one does.
 // It's lenient in the ways real-world files are: check and mate marks, annotations (!, ?, !?), "e.p.",
-// zeros for castling (0-0), a missing "x" or "=", and extra disambiguation (Ng1f3, Ng1-f3) are all accepted.
+// zeros for castling (0-0), a missing "x" or "=", an explicit pawn letter (Pe4) and extra disambiguation (Ng1f3,
+// Ng1-f3) are all accepted.
 // Piece letters must be uppercase, because "b" is the b-file.
 std::optional<Move> moveFromSan(const Board& board, std::string_view san);
 
