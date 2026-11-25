@@ -161,3 +161,38 @@ TEST(game_resign_and_draw_offer) {
     CHECK(other.undo());
     CHECK(!other.status().isOver());
 }
+
+// A FEN written by a program that always records the en passant square, even when no pawn can capture there.
+// The start position must hash like the same position reached later, or the repetition is counted one short.
+TEST(game_useless_en_passant_square_does_not_hide_a_repetition) {
+    Game game = fromFen("rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1");
+    CHECK_EQ(game.board().enPassantSquare(), NO_SQUARE);
+    CHECK(game.startingBoard() == game.board());
+    playAll(game, {"g8f6", "g1f3", "f6g8", "f3g1", "g8f6", "g1f3", "f6g8", "f3g1"});
+    CHECK_EQ(game.repetitionCount(), 3);
+    CHECK(game.status() == (GameStatus{GameResult::Draw, GameEndReason::ThreefoldRepetition}));
+    // A square a pawn really can capture on is kept.
+    const Game live = fromFen("rnbqkbnr/ppp1pppp/8/8/3pP3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 2");
+    CHECK_EQ(live.board().enPassantSquare(), E3);
+}
+
+TEST(game_mating_material_for_time_forfeits) {
+    const auto mating = [](const char* fen, Color side) { return hasMatingMaterial(Board::fromFen(fen), side); };
+    CHECK(!mating("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1", Color::Black));  // bare king
+    CHECK(mating("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1", Color::White));   // a pawn
+    CHECK(!mating("4k3/8/8/8/8/8/8/2N1K3 w - - 0 1", Color::White));  // knight v bare king
+    CHECK(mating("4k2r/8/8/8/8/8/8/2N1K3 w - - 0 1", Color::White));  // knight v rook: the rook can box its king in
+    CHECK(mating("4k3/4p3/8/8/8/8/8/2N1K3 w - - 0 1", Color::White)); // knight v pawn
+    CHECK(!mating("4k3/8/8/8/8/8/8/1N2K2q w - - 0 1", Color::White)); // knight v queen
+    CHECK(mating("4k3/8/8/8/8/8/8/1NN1K3 w - - 0 1", Color::White));  // two knights
+    CHECK(!mating("4k2r/8/8/8/8/8/8/2B1K3 w - - 0 1", Color::White)); // bishop v rook
+    CHECK(mating("4k3/4p3/8/8/8/8/8/2B1K3 w - - 0 1", Color::White)); // bishop v pawn
+    CHECK(mating("4k1b1/8/8/8/8/8/8/2B1K3 w - - 0 1", Color::White)); // bishops on opposite colors (g8, c1)
+    CHECK(!mating("4kb2/8/8/8/8/8/8/2B1K3 w - - 0 1", Color::White)); // bishops on the same color (f8, c1)
+    CHECK(mating("4k3/8/8/8/8/8/8/2BBK3 w - - 0 1", Color::White));   // a bishop on each color
+
+    // So K+N v K+R: the side with the rook loses on time.
+    Game game = fromFen("4k2r/8/8/8/8/8/8/2N1K3 b - - 0 1");
+    game.timeout(Color::Black);
+    CHECK(game.status() == (GameStatus{GameResult::WhiteWins, GameEndReason::Timeout}));
+}

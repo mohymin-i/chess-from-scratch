@@ -124,6 +124,10 @@ TEST(analysis_forced_moves_are_not_judged) {
     const GameAnalysis review = analyzeGame(game, shallow(4));
     CHECK(review.moves[0].quality != MoveQuality::Forced);
     CHECK(review.moves[1].quality == MoveQuality::Forced);
+    // The position after Ra8+ has only that one reply, and it leaves a dead draw (K v K). The review has to see
+    // that through the forced move instead of taking the static evaluation (a rook up) at face value.
+    CHECK_EQ(review.moves[0].evalAfter, 0);
+    CHECK(review.moves[0].quality == MoveQuality::Blunder);
     CHECK_EQ(review.black.movesAnalyzed, 0);
     CHECK(review.black.accuracy == 100.0);
 }

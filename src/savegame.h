@@ -33,7 +33,8 @@ struct SavedGame {
 };
 
 // Saves one game as PGN. `tags` can hold anything the app wants back later (player names, which bot, time
-// control); they're stored as PGN tags.
+// control); they're stored as PGN tags. Result, Termination, SetUp and FEN are always taken from the game, so
+// passing back the tags of a loaded save is safe.
 bool saveGame(const Game& game, const PgnTags& tags, const std::filesystem::path& path, std::string* error = nullptr);
 
 // Loads the first game in a PGN file. Returns nullopt for a missing, unreadable or corrupt file, with the reason

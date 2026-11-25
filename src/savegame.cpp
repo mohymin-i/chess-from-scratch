@@ -98,7 +98,14 @@ std::optional<std::string> readWholeFile(const fs::path& path) {
 }
 
 bool saveGame(const Game& game, const PgnTags& tags, const fs::path& path, std::string* error) {
-    return writeFileAtomically(path, toPgn(game, tags), error);
+    // These describe the game itself, so they always come from `game`. The tags of a loaded save are the natural
+    // thing to pass back in, and theirs are stale: an old Result ("*") would bring a resigned game back as still
+    // going, and an old FEN would replay the moves from the wrong position and make the save unreadable.
+    PgnTags kept;
+    for (const auto& [name, value] : tags) {
+        if (name != "Result" && name != "Termination" && name != "SetUp" && name != "FEN") kept.emplace_back(name, value);
+    }
+    return writeFileAtomically(path, toPgn(game, kept), error);
 }
 
 std::optional<SavedGame> loadSavedGame(const fs::path& path, std::string* error) {

@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <utility>
 
+#include "attacks.h"
+
 namespace {
 constexpr Bitboard LIGHT_SQUARES = 0x55AA55AA55AA55AAULL; // b1, d1, ..., a2, c2, ...: squares where file + rank is odd
 } // namespace
@@ -25,7 +27,44 @@ bool isInsufficientMaterial(const Board& board) {
     return (bishops & LIGHT_SQUARES) == 0 || (bishops & ~LIGHT_SQUARES) == 0;
 }
 
-Game::Game(const Board& start) : start_(start), board_(start) {
+bool hasMatingMaterial(const Board& board, Color side) {
+    const Color other = opposite(side);
+    if (board.pieces(side, PieceType::Pawn) | board.pieces(side, PieceType::Rook) |
+        board.pieces(side, PieceType::Queen)) {
+        return true;
+    }
+    const Bitboard knights = board.pieces(side, PieceType::Knight);
+    const Bitboard bishops = board.pieces(side, PieceType::Bishop);
+    if (!knights && !bishops) return false; // a bare king
+    if (knights && bishops) return true;
+    if (popCount(knights) >= 2) return true; // two knights can't force mate, but a mate can still happen
+    const Bitboard theirPawns = board.pieces(other, PieceType::Pawn);
+    const Bitboard theirKnights = board.pieces(other, PieceType::Knight);
+    const Bitboard theirBishops = board.pieces(other, PieceType::Bishop);
+    if (knights) {
+        // A lone knight mates only a king hemmed in by its own pieces. Like Lichess, queens alone don't count.
+        return (theirPawns | theirKnights | theirBishops | board.pieces(other, PieceType::Rook)) != 0;
+    }
+    // Only bishops. On both colors they can mate; all on one color, the opponent must supply the blockers.
+    const bool light = bishops & LIGHT_SQUARES;
+    const bool dark = bishops & ~LIGHT_SQUARES;
+    if (light && dark) return true;
+    const Bitboard otherColorSquares = light ? ~LIGHT_SQUARES : LIGHT_SQUARES;
+    return (theirPawns | theirKnights | (theirBishops & otherColorSquares)) != 0;
+}
+
+namespace {
+Board withoutUselessEnPassant(Board board) {
+    const Square ep = board.enPassantSquare();
+    const Color us = board.sideToMove();
+    if (ep != NO_SQUARE && !(pawnAttacks(opposite(us), ep) & board.pieces(us, PieceType::Pawn))) {
+        board.setEnPassantSquare(NO_SQUARE);
+    }
+    return board;
+}
+} // namespace
+
+Game::Game(const Board& start) : start_(withoutUselessEnPassant(start)), board_(start_) {
     hashes_.push_back(board_.hash());
     refresh();
 }
@@ -87,10 +126,7 @@ void Game::resign(Color loser) {
 void Game::timeout(Color loser) {
     if (status().isOver()) return;
     const Color winner = opposite(loser);
-    const Bitboard heavy = board_.pieces(winner, PieceType::Pawn) | board_.pieces(winner, PieceType::Rook) |
-                           board_.pieces(winner, PieceType::Queen);
-    const int minors = popCount(board_.pieces(winner, PieceType::Knight) | board_.pieces(winner, PieceType::Bishop));
-    if (!heavy && minors <= 1) {
+    if (!hasMatingMaterial(board_, winner)) {
         manualEnd_ = GameStatus{GameResult::Draw, GameEndReason::Timeout};
     } else {
         manualEnd_ = GameStatus{winner == Color::White ? GameResult::WhiteWins : GameResult::BlackWins,
