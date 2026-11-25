@@ -343,3 +343,22 @@ TEST(export_termination_text) {
     CHECK_EQ(terminationText({GameResult::WhiteWins, GameEndReason::Timeout}), std::string("time forfeit"));
     CHECK_EQ(terminationText({GameResult::BlackWins, GameEndReason::Checkmate}), std::string("checkmate"));
 }
+
+TEST(export_timeout_wording_from_other_programs) {
+    for (const char* termination : {"Time forfeit", "TIME FORFEIT", "Hikaru won on time"}) {
+        const std::string pgn =
+            std::string("[Result \"1-0\"]\n[Termination \"") + termination + "\"]\n\n1. e4 e5 1-0\n";
+        CHECK(parsePgn(pgn).at(0).game.status() == (GameStatus{GameResult::WhiteWins, GameEndReason::Timeout}));
+    }
+    // A drawn flag (the opponent couldn't mate) stays a timeout through PGN, instead of becoming an agreed draw.
+    Game drawn(Board::fromFen("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1"));
+    drawn.timeout(Color::White);
+    CHECK(parsePgn(toPgn(drawn)).at(0).game.status() == drawn.status());
+    const std::string chessCom = "[Result \"1/2-1/2\"]\n[FEN \"4k3/8/8/8/8/8/4P3/4K3 w - - 0 1\"]\n"
+                                 "[Termination \"Game drawn by timeout vs insufficient material\"]\n\n1/2-1/2\n";
+    CHECK(parsePgn(chessCom).at(0).game.status() == drawn.status());
+    // A decisive flag the rules would call a draw keeps the file's result.
+    const std::string odd = "[Result \"0-1\"]\n[FEN \"4k3/8/8/8/8/8/4P3/4K3 w - - 0 1\"]\n"
+                            "[Termination \"time forfeit\"]\n\n0-1\n";
+    CHECK(parsePgn(odd).at(0).game.status().result == GameResult::BlackWins);
+}

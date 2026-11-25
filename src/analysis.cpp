@@ -39,6 +39,38 @@ void summarize(const std::vector<MoveAnalysis>& moves, Color color, Color firstM
     out.averageCentipawnLoss = static_cast<int>(totalLoss / static_cast<long long>(accuracies.size()));
     out.engineMatchRate = matches / n;
 }
+
+struct PositionScore {
+    int score = 0; // search units, from the side to move's point of view
+    Move best;
+    std::vector<Move> line;
+};
+
+PositionScore scorePosition(Searcher& searcher, const Game& game, const SearchLimits& limits, int forcedDepth = 0) {
+    const GameStatus status = game.status();
+    if (status.isOver() && isRuleEnding(status.reason)) {
+        // Ended by the rules: the score is known exactly.
+        return {status.reason == GameEndReason::Checkmate ? -search::MATE : 0, Move(), {}};
+    }
+    // With only one legal move the search doesn't search at all, it just returns the static evaluation, which
+    // misses whatever that move leads to (a mate, a lost piece, a dead draw). Score the position after it instead.
+    // Long chains of forced moves (a perpetual check) stop after a few, so this always ends.
+    if (game.legalMoves().size() == 1 && forcedDepth < 8) {
+        const Move only = game.legalMoves()[0];
+        Game next = game;
+        next.play(only);
+        const PositionScore after = scorePosition(searcher, next, limits, forcedDepth + 1);
+        int score = -after.score;
+        // A mate is one ply further away from here.
+        if (score >= search::MATE_BOUND) --score;
+        if (score <= -search::MATE_BOUND) ++score;
+        PositionScore here{score, only, {only}};
+        here.line.insert(here.line.end(), after.line.begin(), after.line.end());
+        return here;
+    }
+    const SearchResult r = searcher.search(game.board(), game.positionHistory(), limits);
+    return {r.score, r.bestMove, r.pv};
+}
 } // namespace
 
 const char* toString(MoveQuality quality) {
@@ -97,25 +129,17 @@ GameAnalysis analyzeGame(const Game& game, const AnalysisSettings& settings) {
     std::vector<Move> best(total);
     std::vector<std::vector<Move>> lines(total);
     std::vector<bool> forced(total, false);
-    std::vector<std::uint64_t> history;
 
     Game replay(game.startingBoard());
     int analyzed = 0; // moves with both a "before" and an "after" score
     bool cancelled = false;
     for (int i = 0; i <= total; ++i) {
-        history.push_back(replay.board().hash());
-        const GameStatus status = replay.status();
-        if (status.isOver() && isRuleEnding(status.reason)) {
-            // Ended by the rules: the score is known exactly.
-            scores[i] = status.reason == GameEndReason::Checkmate ? -search::MATE : 0;
-        } else {
-            const SearchResult r = searcher.search(replay.board(), history, limits);
-            scores[i] = r.score;
-            if (i < total) {
-                best[i] = r.bestMove;
-                lines[i] = r.pv;
-                forced[i] = replay.legalMoves().size() == 1;
-            }
+        PositionScore p = scorePosition(searcher, replay, limits);
+        scores[i] = p.score;
+        if (i < total && !p.best.isNull()) {
+            best[i] = p.best;
+            lines[i] = std::move(p.line);
+            forced[i] = replay.legalMoves().size() == 1;
         }
         analyzed = i;
         if (i == total || cancelled) break;

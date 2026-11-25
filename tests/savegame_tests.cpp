@@ -167,3 +167,32 @@ TEST(savegame_app_data_directory) {
     }
 }
 #endif
+
+// The app restores the autosave on launch and keeps passing its tags (player names, bot) to later saves.
+TEST(savegame_tags_from_a_loaded_save_are_safe_to_reuse) {
+    TempDir dir;
+    const fs::path file = dir.path() / "autosave.pgn";
+    Game game;
+    CHECK(game.playUci("e2e4"));
+    CHECK(saveGame(game, {{"White", "Me"}}, file));
+    std::optional<SavedGame> loaded = loadSavedGame(file);
+    CHECK(loaded.has_value());
+    loaded->game.resign(Color::Black); // the stale Result "*" in the tags must not bring this back to life
+    CHECK(saveGame(loaded->game, loaded->tags, file));
+    const std::optional<SavedGame> again = loadSavedGame(file);
+    CHECK(again && again->game.status() == (GameStatus{GameResult::WhiteWins, GameEndReason::Resignation}));
+    bool keptName = false;
+    for (const auto& [name, value] : again->tags) keptName |= name == "White" && value == "Me";
+    CHECK(keptName);
+
+    // Tags from a game that started from a custom position, reused for a normal game: no stale FEN.
+    Game custom(Board::fromFen("4k3/8/8/8/8/8/8/R3K3 w Q - 0 1"));
+    CHECK(custom.playUci("a1a7"));
+    CHECK(saveGame(custom, {}, file));
+    const std::optional<SavedGame> fromCustom = loadSavedGame(file);
+    Game fresh;
+    CHECK(fresh.playUci("d2d4"));
+    CHECK(saveGame(fresh, fromCustom->tags, file));
+    const std::optional<SavedGame> freshBack = loadSavedGame(file);
+    CHECK(freshBack && freshBack->game.startingBoard() == Board() && freshBack->game.moves() == fresh.moves());
+}

@@ -47,9 +47,19 @@ struct GameStatus {
 // left besides the kings and all of them on squares of the same color.
 bool isInsufficientMaterial(const Board& board);
 
+// True if `side` could checkmate the other king by some sequence of legal moves, however unlikely, which is what
+// decides whether running out of time loses or draws (FIDE rule 6.9). A bare king never can. A lone knight can
+// only with the opponent's own pieces boxing their king in, so it can against a rook, bishop, knight or pawn. A
+// lone bishop (or bishops all on one color) can against a knight, a pawn or a bishop on the other color. Anything
+// more can always. These are the same judgments Lichess makes.
+bool hasMatingMaterial(const Board& board, Color side);
+
 class Game {
 public:
     Game() : Game(Board()) {}
+    // An en passant square no pawn can actually capture on is dropped from the start position, the way
+    // Board::makeMove never records one, so the start hashes like the same position reached later and
+    // repetitions are counted correctly. Many programs write the square after every double push.
     explicit Game(const Board& start);
 
     const Board& board() const { return board_; }
@@ -79,7 +89,7 @@ public:
     void resign(Color loser);
     void agreeDraw();
     // `loser` ran out of time. That's a loss, unless the opponent has nothing left that could ever checkmate
-    // (a bare king, or king and a single knight or bishop), which makes it a draw under the FIDE rules.
+    // (see hasMatingMaterial), which makes it a draw under the FIDE rules.
     void timeout(Color loser);
 
     // Computed fresh from the current position each time.

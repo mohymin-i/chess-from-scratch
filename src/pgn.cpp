@@ -42,6 +42,38 @@ bool isResult(std::string_view token) {
     return token == "1-0" || token == "0-1" || token == "1/2-1/2" || token == "*";
 }
 
+// The PGN standard writes "time forfeit", Lichess "Time forfeit", Chess.com "<player> won on time" and
+// "Game drawn by timeout vs insufficient material".
+bool endedOnTime(std::string termination) {
+    for (char& c : termination) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return termination.find("time forfeit") != std::string::npos || termination.find("on time") != std::string::npos ||
+           termination.find("timeout") != std::string::npos;
+}
+
+// Records a result the moves alone don't explain: a resignation, an agreed draw or a lost or drawn flag.
+void recordResult(Game& game, const std::string& result, bool onTime) {
+    const Board& board = game.board();
+    if (result == "1-0" || result == "0-1") {
+        const Color loser = result == "1-0" ? Color::Black : Color::White;
+        // A flag against a side that can't mate is a draw, which would contradict the file's result.
+        if (onTime && hasMatingMaterial(board, opposite(loser))) {
+            game.timeout(loser);
+        } else {
+            game.resign(loser);
+        }
+    } else if (result == "1/2-1/2") {
+        // A drawn flag: the opponent of whoever ran out couldn't mate. That's usually the side to move's clock.
+        const Color toMove = board.sideToMove();
+        if (onTime && !hasMatingMaterial(board, opposite(toMove))) {
+            game.timeout(toMove);
+        } else if (onTime && !hasMatingMaterial(board, toMove)) {
+            game.timeout(opposite(toMove));
+        } else {
+            game.agreeDraw();
+        }
+    }
+}
+
 // Fills in missing think times from [%clk] values: what a player's clock lost on a move, plus the increment.
 void deriveTimesFromClocks(PgnGame& g) {
     const std::size_t n = g.game.moves().size();
@@ -257,12 +289,7 @@ private:
         current_.result = result;
         current_.timeControl = TimeControl::fromPgnTag(current_.tag("TimeControl"));
         deriveTimesFromClocks(current_);
-        if (!game.status().isOver()) {
-            const bool flagged = current_.tag("Termination") == "time forfeit";
-            if (result == "1-0") flagged ? game.timeout(Color::Black) : game.resign(Color::Black);
-            if (result == "0-1") flagged ? game.timeout(Color::White) : game.resign(Color::White);
-            if (result == "1/2-1/2") game.agreeDraw();
-        }
+        if (!game.status().isOver()) recordResult(game, result, endedOnTime(current_.tag("Termination")));
         games_.push_back(std::move(current_));
         current_ = PgnGame{};
         started_ = false;

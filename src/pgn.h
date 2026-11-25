@@ -90,8 +90,9 @@ std::string joinPgn(const std::vector<std::string>& games);
 // annotation glyphs ($1) and move-number styles (1. / 1... / 1.e4) are all handled; variations are skipped.
 // Think times come from [%emt] comments, or, if a game only has [%clk], from the change in the clock (plus the
 // increment from the TimeControl tag).
-// A decisive result on a game that isn't over by the rules is recorded with Game::resign (or Game::timeout when
-// the Termination tag says "time forfeit"), and "1/2-1/2" with Game::agreeDraw, so the Game's status matches.
+// A decisive result on a game that isn't over by the rules is recorded with Game::resign, and "1/2-1/2" with
+// Game::agreeDraw, so the Game's status matches. When the Termination tag says the game ended on time ("time
+// forfeit", also Lichess's and Chess.com's wording) Game::timeout is used instead, for a drawn flag too.
 // Throws PgnError on an illegal or unreadable move, a bad FEN tag or broken syntax.
 std::vector<PgnGame> parsePgn(std::string_view text);
 
