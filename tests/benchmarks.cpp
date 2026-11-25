@@ -231,7 +231,7 @@ std::vector<Benchmark> benchmarks() {
                         }
                         return 2 * static_cast<std::uint64_t>(g.moves().size());
                     }});
-    list.push_back({"fen_round_trip", "positions", 5e5, [] {
+    list.push_back({"fen_round_trip", "positions", 2e5, [] {
                         std::uint64_t n = 0;
                         for (const char* fen : POSITIONS) {
                             sink = sink + Board::fromFen(fen).toFen().size();

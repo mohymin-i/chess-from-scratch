@@ -11,3 +11,6 @@ build*/
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
+
+# Personal notes, kept out of the repository
+pitch.md
