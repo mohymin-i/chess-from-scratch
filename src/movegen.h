@@ -56,6 +56,26 @@ void generateLegal(const Board& board, MoveList& list);
 // True if a pseudo-legal move is legal, meaning it doesn't leave the mover's king in check.
 bool isLegal(const Board& board, Move move);
 
+// A shortcut for the legality test, set up once per position. When the side to move isn't in check, a move by
+// anything but the king can only expose the king if the piece is pinned and leaves the line of the pin (en passant
+// is the exception: it takes two pawns off one rank). So most moves are known to be legal without being played and
+// tested. Search and perft use this; for the rest, play the move and call moverLeftInCheck.
+class LegalityShortcut {
+public:
+    LegalityShortcut(const Board& board, bool sideToMoveInCheck);
+    // True: the pseudo-legal move is certainly legal. False: unknown, so play it and test.
+    bool certainlyLegal(Move move) const {
+        if (inCheck_ || move.from() == king_ || move.isEnPassant()) return false;
+        return !(pinned_ & squareBit(move.from())) || (pinLines_[move.from()] & squareBit(move.to()));
+    }
+
+private:
+    bool inCheck_;
+    Square king_;
+    Bitboard pinned_ = 0;
+    Bitboard pinLines_[NUM_SQUARES]; // for each pinned piece, the line through it and the king; only those are set
+};
+
 // Is sq attacked by any piece of color `by`? `occupied` lets callers pretend pieces are elsewhere.
 bool isSquareAttacked(const Board& board, Square sq, Color by, Bitboard occupied);
 inline bool isSquareAttacked(const Board& board, Square sq, Color by) {

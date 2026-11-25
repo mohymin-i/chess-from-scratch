@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <optional>
 
 #include "game.h"
 
@@ -221,6 +222,7 @@ int Searcher::quiesce(int alpha, int beta, int ply) {
 
     int scores[MoveList::CAPACITY];
     orderMoves(moves, scores, Move(), MAX_PLY);
+    std::optional<LegalityShortcut> shortcut;
     for (int i = 0; i < moves.size(); ++i) {
         pickNext(moves, scores, i);
         const Move m = moves[i];
@@ -229,10 +231,15 @@ int Searcher::quiesce(int alpha, int beta, int ply) {
             // Delta pruning: even winning this piece for free can't raise alpha.
             const int promoBonus = m.isPromotion() ? SEE_VALUE[4] - SEE_VALUE[0] : 0;
             if (standPat + capturedValue(board_, m) + promoBonus + 200 < alpha) continue;
-            if (search::staticExchange(board_, m) < 0) continue; // losing capture
+            // Losing capture. orderMoves already ran the exchange evaluation and scored these below zero (every
+            // other noisy move scores above), so its verdict is reused instead of computing it twice.
+            if (scores[i] < 0) continue;
         }
+        // Set up only once a move survives the pruning above; many quiescence nodes never get that far.
+        if (!shortcut) shortcut.emplace(board_, checked);
+        const bool certainlyLegal = shortcut->certainlyLegal(m);
         const UndoInfo undo = board_.makeMove(m);
-        if (moverLeftInCheck(board_)) {
+        if (!certainlyLegal && moverLeftInCheck(board_)) {
             board_.unmakeMove(m, undo);
             continue;
         }
@@ -289,7 +296,8 @@ int Searcher::negamax(int depth, int alpha, int beta, int ply, bool pvNode, bool
     }
 
     const Color us = board_.sideToMove();
-    const int staticEval = checked ? -INF : evaluateHere();
+    // Only the pruning below (never done at PV nodes) and futility pruning (likewise) read it.
+    const int staticEval = checked || pvNode ? -INF : evaluateHere();
 
     if (!pvNode && !checked && ply > 0) {
         // Reverse futility: far enough above beta that a shallow search won't bring it back down.
@@ -322,19 +330,21 @@ int Searcher::negamax(int depth, int alpha, int beta, int ply, bool pvNode, bool
     Move bestMove;
     int bound = BOUND_UPPER;
     Move quietsSearched[MoveList::CAPACITY];
+    const LegalityShortcut shortcut(board_, checked);
 
     for (int i = 0; i < moves.size(); ++i) {
         pickNext(moves, scores, i);
         const Move m = moves[i];
         const bool quiet = !m.isCapture() && !m.isPromotion();
 
+        const bool certainlyLegal = shortcut.certainlyLegal(m);
         const UndoInfo undo = board_.makeMove(m);
-        if (moverLeftInCheck(board_)) {
+        if (!certainlyLegal && moverLeftInCheck(board_)) {
             board_.unmakeMove(m, undo);
             continue;
         }
         ++legal;
-        const bool givesCheck = inCheck(board_);
+        const bool givesCheck = quiet && inCheck(board_); // only consulted for quiet moves
 
         // Prune late quiet moves near the leaves once a reasonable move has been found.
         if (settings_.futilityPruning && !pvNode && !checked && quiet && !givesCheck && legal > 1 &&

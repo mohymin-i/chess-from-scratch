@@ -153,15 +153,94 @@ constexpr Bitboard pawnAttacks(Color color, Square sq) { return attacks_detail::
 
 // ---------- Sliders ----------
 
-constexpr Bitboard rookAttacks(Square sq, Bitboard occupied) {
-    using namespace attacks_detail;
+namespace attacks_detail {
+
+// The straightforward version: walk each ray to its first blocker. It's the reference the fast version below is
+// built from and tested against.
+constexpr Bitboard rookAttacksByRays(Square sq, Bitboard occupied) {
     return rayAttacks<NORTH>(sq, occupied) | rayAttacks<EAST>(sq, occupied) | rayAttacks<SOUTH>(sq, occupied) |
            rayAttacks<WEST>(sq, occupied);
 }
-constexpr Bitboard bishopAttacks(Square sq, Bitboard occupied) {
-    using namespace attacks_detail;
+constexpr Bitboard bishopAttacksByRays(Square sq, Bitboard occupied) {
     return rayAttacks<NORTH_EAST>(sq, occupied) | rayAttacks<NORTH_WEST>(sq, occupied) |
            rayAttacks<SOUTH_EAST>(sq, occupied) | rayAttacks<SOUTH_WEST>(sq, occupied);
+}
+
+// The fast version ("kindergarten bitboards", see chessprogramming.org). Along one line (a rank, a diagonal or an
+// anti-diagonal), each file holds exactly one square, so a multiplication gathers the line's six inner squares (the
+// b- to g-files; the edge squares can't block anything beyond them) into a 6-bit index. A small table then gives the
+// attacked files for a slider on that file, and masking with the line turns files back into squares. Files work the
+// same way after a different multiplication. No branches, and the tables total 8 KB.
+inline constexpr Bitboard B_FILE = FILE_A << 1;
+inline constexpr Bitboard FILE_GATHER = 0x0080402010080400ULL; // collects a2..a7 into the top six bits
+
+struct LineMasks {
+    std::array<Bitboard, NUM_SQUARES> rank{}, diagonal{}, antiDiagonal{}; // the line through sq, without sq
+};
+constexpr LineMasks makeLineMasks() {
+    LineMasks m;
+    for (int sq = 0; sq < NUM_SQUARES; ++sq) {
+        m.rank[sq] = RAYS[EAST][sq] | RAYS[WEST][sq];
+        m.diagonal[sq] = RAYS[NORTH_EAST][sq] | RAYS[SOUTH_WEST][sq];
+        m.antiDiagonal[sq] = RAYS[NORTH_WEST][sq] | RAYS[SOUTH_EAST][sq];
+    }
+    return m;
+}
+inline constexpr LineMasks LINE_MASKS = makeLineMasks();
+
+constexpr int lineIndex(Bitboard lineMask, Bitboard occupied) {
+    return static_cast<int>(((lineMask & occupied) * B_FILE) >> 58);
+}
+constexpr int fileIndex(Square sq, Bitboard occupied) {
+    return static_cast<int>(((FILE_A & (occupied >> fileOf(sq))) * FILE_GATHER) >> 58);
+}
+
+// FILE_FILL[file][index]: the files a slider on `file` attacks, copied onto every rank.
+// A_FILE[rank][index]: the squares a slider on the a-file attacks along it.
+// Both are filled by trying every blocker pattern with the ray version, so they agree with it by construction.
+using LineTable = std::array<std::array<Bitboard, 64>, 8>;
+constexpr LineTable makeFileFill() {
+    LineTable table{};
+    for (int file = 0; file < 8; ++file) {
+        const auto sq = static_cast<Square>(file); // on rank 1
+        for (int inner = 0; inner < 64; ++inner) {
+            const Bitboard occupied = static_cast<Bitboard>(inner) << 1; // blockers on b1..g1
+            const Bitboard onRank = rookAttacksByRays(sq, occupied) & RANK_1;
+            table[file][lineIndex(LINE_MASKS.rank[sq], occupied)] = onRank * FILE_A;
+        }
+    }
+    return table;
+}
+constexpr LineTable makeAFile() {
+    LineTable table{};
+    for (int rank = 0; rank < 8; ++rank) {
+        const auto sq = static_cast<Square>(rank * 8); // on the a-file
+        for (int inner = 0; inner < 64; ++inner) {
+            Bitboard occupied = 0; // blockers on a2..a7
+            for (int r = 1; r <= 6; ++r) {
+                if (inner & (1 << (r - 1))) occupied |= Bitboard{1} << (8 * r);
+            }
+            table[rank][fileIndex(sq, occupied)] = rookAttacksByRays(sq, occupied) & FILE_A;
+        }
+    }
+    return table;
+}
+inline constexpr LineTable FILE_FILL = makeFileFill();
+inline constexpr LineTable A_FILE = makeAFile();
+
+constexpr Bitboard lineAttacks(Bitboard lineMask, Square sq, Bitboard occupied) {
+    return lineMask & FILE_FILL[fileOf(sq)][lineIndex(lineMask, occupied)];
+}
+
+} // namespace attacks_detail
+
+constexpr Bitboard rookAttacks(Square sq, Bitboard occupied) {
+    using namespace attacks_detail;
+    return lineAttacks(LINE_MASKS.rank[sq], sq, occupied) | (A_FILE[rankOf(sq)][fileIndex(sq, occupied)] << fileOf(sq));
+}
+constexpr Bitboard bishopAttacks(Square sq, Bitboard occupied) {
+    using namespace attacks_detail;
+    return lineAttacks(LINE_MASKS.diagonal[sq], sq, occupied) | lineAttacks(LINE_MASKS.antiDiagonal[sq], sq, occupied);
 }
 constexpr Bitboard queenAttacks(Square sq, Bitboard occupied) {
     return rookAttacks(sq, occupied) | bishopAttacks(sq, occupied);

@@ -54,8 +54,28 @@ ctest --test-dir build-asan --output-on-failure
 
 To run a subset, pass part of a test name: `./build/chess_tests board_place`.
 
-Deep perft and the bot-vs-bot strength games are labeled `slow` and take about a minute. Skip them with
-`ctest --test-dir build -LE slow`.
+What `ctest` runs:
 
-Every push and pull request runs the tests on macOS and Linux, with and without sanitizers, through GitHub Actions.
+| Test | What it checks |
+|---|---|
+| `unit_tests` | Every module case by case, plus property tests (`tests/property_tests.cpp`): seeded random games where each position must satisfy rules like "legal moves equal the pseudo-legal moves that don't leave the king in check", "every move survives SAN, UCI and FEN round trips", "the evaluation is the same with colors flipped" and "a damaged PGN file reads or throws `PgnError`, nothing else" |
+| `perft_deep` (`slow`) | Move generation against published perft counts, deeper than the unit tests go |
+| `property_fuzz` (`slow`) | The property tests with 20 times the random positions |
+| `bot_matches` (`slow`) | Each bot level beats the one below it, and a whole bot game survives PGN and review |
+| `benchmarks` (`perf`) | Runs `chess_bench --check`; in an optimized build it fails if any hot path is far below its performance floor |
+
+Skip the slow ones with `ctest --test-dir build -LE "slow|perf"`.
+
+## Benchmarks
+
+`./build/chess_bench` prints the throughput of each hot path (perft, move generation, make/unmake, evaluation,
+exchange evaluation, search, a bot move, SAN, PGN, FEN, game review) and a *bench signature*: the node count of a
+fixed-depth search over twelve positions. Pass part of a name to run only some (`./build/chess_bench search`).
+Build in Release for meaningful numbers (`cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release`).
+
+The search is deterministic, so the signature only changes when what the search does changes. A pure speed-up
+must leave it alone, which makes it a quick check that an optimization didn't change the engine's play.
+
+Every push and pull request runs the tests on macOS and Linux, with and without sanitizers, through GitHub Actions,
+plus a Linux Release build where the benchmarks enforce their floors and print their results.
 

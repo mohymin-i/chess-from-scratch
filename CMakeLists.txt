@@ -33,6 +33,9 @@ add_library(chess_core
         src/gameexport.cpp
         src/piece.cpp)
 target_include_directories(chess_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+# Game review can analyze positions on several threads.
+find_package(Threads REQUIRED)
+target_link_libraries(chess_core PUBLIC Threads::Threads)
 
 # ---- Tests: run with `ctest --test-dir <build dir> --output-on-failure` ----
 enable_testing()
@@ -52,7 +55,8 @@ add_executable(chess_tests
         tests/analysis_tests.cpp
         tests/savegame_tests.cpp
         tests/edge_case_tests.cpp
-        tests/export_tests.cpp)
+        tests/export_tests.cpp
+        tests/property_tests.cpp)
 target_link_libraries(chess_tests PRIVATE chess_core)
 
 add_test(NAME unit_tests COMMAND chess_tests)
@@ -64,8 +68,22 @@ target_link_libraries(chess_perft_deep PRIVATE chess_core)
 add_test(NAME perft_deep COMMAND chess_perft_deep)
 set_tests_properties(perft_deep PROPERTIES LABELS slow)
 
+# The property tests again with 20 times the random positions. Labeled "slow".
+add_executable(chess_fuzz tests/test_main.cpp tests/property_tests.cpp)
+target_compile_definitions(chess_fuzz PRIVATE CHESS_PROPERTY_SCALE=20)
+target_link_libraries(chess_fuzz PRIVATE chess_core)
+add_test(NAME property_fuzz COMMAND chess_fuzz)
+set_tests_properties(property_fuzz PROPERTIES LABELS slow)
+
 # Bot-vs-bot games that check each difficulty level beats the one below it. Also labeled "slow".
 add_executable(chess_bot_matches tests/test_main.cpp tests/bot_matches.cpp)
 target_link_libraries(chess_bot_matches PRIVATE chess_core)
 add_test(NAME bot_matches COMMAND chess_bot_matches)
 set_tests_properties(bot_matches PROPERTIES LABELS slow)
+
+# Performance benchmarks: ./chess_bench prints throughput for each hot path. Under ctest (label "perf") it runs with
+# --check, which in an optimized build fails if anything is far below its floor and otherwise just runs each once.
+add_executable(chess_bench tests/benchmarks.cpp)
+target_link_libraries(chess_bench PRIVATE chess_core)
+add_test(NAME benchmarks COMMAND chess_bench --check)
+set_tests_properties(benchmarks PROPERTIES LABELS perf)

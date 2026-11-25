@@ -7,20 +7,26 @@ on:
 
 jobs:
   test:
-    name: ${{ matrix.os }}${{ matrix.sanitize == 'ON' && ' + sanitizers' || '' }}
+    name: ${{ matrix.os }}${{ matrix.sanitize == 'ON' && ' + sanitizers' || '' }}${{ matrix.build == 'Release' && ' release' || '' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
         sanitize: ['OFF', 'ON']
+        build: [Debug]
+        include:
+          # An optimized build, where the benchmarks enforce their performance floors (see tests/benchmarks.cpp).
+          - os: ubuntu-latest
+            sanitize: 'OFF'
+            build: Release
     steps:
       - uses: actions/checkout@v4
 
       - name: Configure
         run: >
           cmake -S . -B build
-          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_BUILD_TYPE=${{ matrix.build }}
           -DCHESS_SANITIZE=${{ matrix.sanitize }}
           -DCMAKE_CXX_FLAGS=-Werror
 
@@ -29,3 +35,7 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+      - name: Benchmark results
+        if: matrix.build == 'Release'
+        run: ./build/chess_bench

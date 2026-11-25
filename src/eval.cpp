@@ -1,6 +1,7 @@
 #include "eval.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 
 #include "attacks.h"
@@ -187,18 +188,26 @@ constexpr Bitboard adjacentFiles(int file) {
 
 int relativeRank(Color color, Square sq) { return color == Color::White ? rankOf(sq) : 7 - rankOf(sq); }
 
-// Squares in front of a pawn on its own and the two neighboring files, up to the last rank.
-Bitboard passedSpan(Color color, Square sq) {
-    const Bitboard files = fileMask(fileOf(sq)) | adjacentFiles(fileOf(sq));
-    const int rank = rankOf(sq);
-    Bitboard ahead = 0;
-    if (color == Color::White) {
-        for (int r = rank + 1; r < 8; ++r) ahead |= rankMask(r);
-    } else {
-        for (int r = rank - 1; r >= 0; --r) ahead |= rankMask(r);
+// Squares in front of a pawn on its own and the two neighboring files, up to the last rank. Precomputed: the
+// evaluation asks for it for every pawn of every position.
+constexpr std::array<std::array<Bitboard, NUM_SQUARES>, NUM_COLORS> makePassedSpans() {
+    std::array<std::array<Bitboard, NUM_SQUARES>, NUM_COLORS> spans{};
+    for (int sq = 0; sq < NUM_SQUARES; ++sq) {
+        const int file = sq % 8;
+        const int rank = sq / 8;
+        const Bitboard files = fileMask(file) | adjacentFiles(file);
+        Bitboard whiteAhead = 0;
+        Bitboard blackAhead = 0;
+        for (int r = rank + 1; r < 8; ++r) whiteAhead |= rankMask(r);
+        for (int r = rank - 1; r >= 0; --r) blackAhead |= rankMask(r);
+        spans[0][sq] = files & whiteAhead;
+        spans[1][sq] = files & blackAhead;
     }
-    return files & ahead;
+    return spans;
 }
+constexpr auto PASSED_SPANS = makePassedSpans();
+
+Bitboard passedSpan(Color color, Square sq) { return PASSED_SPANS[static_cast<int>(color)][sq]; }
 
 Bitboard pawnAttacksAll(Color color, Bitboard pawns) {
     if (color == Color::White) return ((pawns & ~FILE_A) << 7) | ((pawns & ~FILE_H) << 9);
@@ -287,12 +296,16 @@ void evaluateSide(const Board& board, Color us, Terms& t) {
         }
     }
 
-    // Pawn structure.
-    for (int f = 0; f < 8; ++f) {
-        const int onFile = popCount(ourPawns & fileMask(f));
-        if (onFile > 1) t.pawnStructure += DOUBLED_PAWN * (onFile - 1);
-        if (onFile && !(ourPawns & adjacentFiles(f))) t.pawnStructure += ISOLATED_PAWN * onFile;
-    }
+    // Pawn structure, with whole-board bit operations instead of a loop over files. Folding the ranks together gives
+    // one bit per file that has a pawn. Every pawn beyond the first on its file is doubled, so they number pawns minus
+    // occupied files; a pawn is isolated when neither neighboring file has one.
+    Bitboard fold = ourPawns | (ourPawns >> 32);
+    fold |= fold >> 16;
+    fold |= fold >> 8;
+    const Bitboard pawnFiles = fold & 0xFF;
+    t.pawnStructure += DOUBLED_PAWN * (popCount(ourPawns) - popCount(pawnFiles));
+    const Bitboard isolatedFiles = pawnFiles & ~((pawnFiles << 1) | (pawnFiles >> 1));
+    t.pawnStructure += ISOLATED_PAWN * popCount(ourPawns & (isolatedFiles * FILE_A));
     for (Bitboard b = ourPawns; b;) {
         const Square sq = popLsb(b);
         if (passedSpan(us, sq) & theirPawns) continue;
