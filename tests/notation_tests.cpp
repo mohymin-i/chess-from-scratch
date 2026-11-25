@@ -301,3 +301,31 @@ TEST(pgn_damaged_input_never_crashes) {
     }
     CHECK(rejected > 0); // the damage really does break some files
 }
+
+// Whatever tags the app passes in, the file it writes has to read back (an autosave that can't be read is lost).
+TEST(pgn_odd_tags_still_read_back) {
+    Game game;
+    CHECK(game.playUci("e2e4"));
+    const std::string pgn = toPgn(game, {{"White", "Ann\nLee"}, {"Bot level", "1"}, {"", "dropped"}});
+    const PgnGame back = parsePgn(pgn).at(0);
+    CHECK_EQ(back.tag("White"), std::string("Ann Lee"));
+    CHECK_EQ(back.tag("Bot_level"), std::string("1"));
+    CHECK(back.game.moves() == game.moves());
+    // Tag names may use the other symbol characters from the standard.
+    CHECK_EQ(parsePgn("[Opening-ECO \"C20\"]\n\n1. e4 *\n").at(0).tag("Opening-ECO"), std::string("C20"));
+}
+
+TEST(pgn_skips_byte_order_mark) {
+    const auto games = parsePgn("\xEF\xBB\xBF[Event \"x\"]\n\n1. e4 e5 *\n");
+    CHECK_EQ(static_cast<int>(games.size()), 1);
+    CHECK_EQ(static_cast<int>(games[0].game.moves().size()), 2);
+}
+
+TEST(pgn_reads_common_hand_written_forms) {
+    // "e.p." as its own word, written-out evaluation symbols, and an explicit pawn letter.
+    const PgnGame game = parsePgn("1. Pe4 d5 2. e5 f5 3. exf6 e.p. +- Nxf6 =\n4. d4 -+ *").at(0);
+    CHECK_EQ(static_cast<int>(game.game.moves().size()), 7);
+    CHECK(game.game.moves()[4].isEnPassant());
+    // A null move is still an error rather than being skipped (that would put the wrong side to move).
+    CHECK_THROWS(parsePgn("1. e4 -- 2. d4 *"), PgnError);
+}

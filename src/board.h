@@ -76,6 +76,7 @@ struct UndoInfo {
     Square enPassant;
     int halfmoveClock;
     std::uint64_t hash;
+    int fullmoveNumber;
 };
 
 class Board {

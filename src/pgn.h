@@ -79,14 +79,15 @@ struct PgnGame {
 
 // Writes one game. The seven standard tags (Event, Site, Date, Round, White, Black, Result) come first, filled
 // with "?" when not given. A game that didn't start from the normal position gets SetUp and FEN tags; a finished
-// game gets a Termination tag ("normal" or "time forfeit"). Lines are wrapped at 80 columns.
+// game gets a Termination tag ("normal" or "time forfeit"). Lines are wrapped at 80 columns. So that the file
+// can always be read back, characters a tag name can't contain become '_' and line breaks in values become spaces.
 std::string toPgn(const Game& game, const PgnWriteOptions& options);
 std::string toPgn(const Game& game, const PgnTags& tags = {});
 
 // Several games as one PGN file (a "database"), separated by blank lines, ready for other chess software.
 std::string joinPgn(const std::vector<std::string>& games);
 
-// Reads every game in the text. Comments ({...} and ; to end of line), variations in parentheses, numeric
+// Reads every game in the text (a leading UTF-8 byte order mark is skipped). Comments ({...} and ; to end of line), variations in parentheses, numeric
 // annotation glyphs ($1) and move-number styles (1. / 1... / 1.e4) are all handled; variations are skipped.
 // Think times come from [%emt] comments, or, if a game only has [%clk], from the change in the clock (plus the
 // increment from the TimeControl tag).

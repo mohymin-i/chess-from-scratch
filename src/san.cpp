@@ -98,6 +98,8 @@ std::optional<Move> moveFromSan(const Board& board, std::string_view san) {
     if (const std::optional<PieceType> p = pieceFromLetter(s[0])) {
         type = *p;
         i = 1;
+    } else if (s[0] == 'P') {
+        i = 1; // an explicit pawn letter ("Pe4"), as some older programs write
     }
 
     // Promotion: "=Q", or just "Q" right after the destination rank.

@@ -253,7 +253,14 @@ int Searcher::quiesce(int alpha, int beta, int ply) {
 int Searcher::negamax(int depth, int alpha, int beta, int ply, bool pvNode, bool allowNull) {
     pvLength_[ply] = ply;
     if (ply > 0) {
-        if (board_.halfmoveClock() >= 100 || isRepetition() || isInsufficientMaterial(board_)) return drawScore();
+        if (isRepetition() || isInsufficientMaterial(board_)) return drawScore();
+        // The 50-move rule draws only if the last move wasn't checkmate: a mate on the 100th half-move still wins.
+        if (board_.halfmoveClock() >= 100) {
+            if (!inCheck(board_)) return drawScore();
+            MoveList replies;
+            generateLegal(board_, replies);
+            return replies.empty() ? -MATE + ply : drawScore();
+        }
         // Mate distance pruning: no line from here can beat a mate already found closer to the root.
         alpha = std::max(alpha, -MATE + ply);
         beta = std::min(beta, MATE - ply - 1);

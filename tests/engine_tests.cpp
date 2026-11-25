@@ -433,3 +433,16 @@ TEST(bot_clock_limits_thinking_time) {
     CHECK(game.legalMoves().contains(m));
     CHECK(ms < 1'500);
 }
+
+// A mate on the 100th half-move wins (the 50-move rule only draws if the last move wasn't checkmate), so the engine
+// must take it instead of drifting into the draw.
+TEST(engine_mates_on_the_fiftieth_move) {
+    Game game(Board::fromFen("7k/Q7/6K1/8/8/8/8/8 w - - 99 80"));
+    Searcher searcher(4);
+    SearchLimits limits;
+    limits.maxDepth = 4;
+    const SearchResult r = searcher.search(game.board(), game.positionHistory(), limits);
+    CHECK(search::isMateScore(r.score) && r.score > 0);
+    CHECK(game.play(r.bestMove));
+    CHECK(game.status() == (GameStatus{GameResult::WhiteWins, GameEndReason::Checkmate}));
+}
