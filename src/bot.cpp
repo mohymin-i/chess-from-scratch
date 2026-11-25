@@ -230,6 +230,11 @@ Move Bot::chooseMove(const Game& game, std::optional<int> clockMs, int increment
         margin = std::max(margin, settings_.mistakeMargin);
     }
     if (ply < settings_.openingVarietyPlies) margin = std::max(margin, settings_.openingVarietyMargin);
+    // Against a bare king, finishing the game is the whole task, and the evaluation only nudges toward it (drive the
+    // king to the edge, bring ours closer) by a few centipawns a move. Any randomness drowns that out and the bot
+    // wanders until the 50-move rule, which no human of any level does with a queen or rook up. Play it straight.
+    const Color them = opposite(board.sideToMove());
+    if (board.occupancy(them) == board.pieces(them, PieceType::King)) margin = 0;
 
     if (margin == 0) {
         last_ = searcher_.search(board, game.positionHistory(), l, settings_.search);

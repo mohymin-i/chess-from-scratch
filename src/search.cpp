@@ -436,10 +436,22 @@ SearchResult Searcher::search(const Board& board, const std::vector<std::uint64_
         return result;
     }
     result.bestMove = legal[0];
-    if (legal.size() == 1) { // nothing to think about
-        result.depth = 0;
-        result.pv = {legal[0]};
-        result.score = evaluate(board, settings.weights);
+    if (legal.size() == 1) {
+        // There's no choice to make, so don't spend the time budget. The score still needs a short real search: the
+        // static evaluation misses what the forced move leads to (say, recapturing the queen that just gave check).
+        const Move only = legal[0];
+        const int depth = std::clamp(limits.maxDepth, 1, 4);
+        const UndoInfo undo = board_.makeMove(only);
+        hashes_.push_back(board_.hash());
+        result.score = -negamax(depth - 1, -INF, INF, 1, true, true); // canStop_ is false, so this always finishes
+        hashes_.pop_back();
+        board_.unmakeMove(only, undo);
+        result.depth = depth;
+        result.pv = {only};
+        for (int j = 1; j < pvLength_[1]; ++j) result.pv.push_back(pv_[1][j]);
+        result.nodes = nodes_;
+        result.timeMs =
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_).count();
         return result;
     }
 
@@ -498,7 +510,9 @@ std::vector<ScoredMove> Searcher::candidateMoves(const Board& board, const std::
     if (mainResult) *mainResult = best;
     if (best.bestMove.isNull()) return out;
     out.push_back({best.bestMove, best.score});
-    if (best.depth == 0) return out; // only one legal move
+    MoveList legal;
+    generateLegal(board, legal);
+    if (legal.size() == 1) return out;
 
     // Score the rest with the same depth. The window is [best - margin, best + 1]: anything that fails low is
     // more than `margin` worse and gets dropped cheaply.
@@ -511,8 +525,6 @@ std::vector<ScoredMove> Searcher::candidateMoves(const Board& board, const std::
     canStop_ = true;
     const int searchDepth = best.depth;
     const int floor = best.score - margin;
-    MoveList legal;
-    generateLegal(board, legal);
     for (const Move m : legal) {
         if (m == best.bestMove) continue;
         const UndoInfo undo = board_.makeMove(m);
