@@ -70,8 +70,14 @@ struct AnalysisSettings {
     std::uint64_t nodesPerPosition = 0; // 0 means no node limit
     int hashMegabytes = 64;
     // Called after each position is analyzed with (done, total). Return false to cancel; the moves analyzed so
-    // far are returned.
+    // far are returned. It's always called on the thread that called analyzeGame.
     std::function<bool(int, int)> progress;
+    // Positions to analyze at once, each thread with its own search and an equal share of hashMegabytes. 1 (the
+    // default) analyzes in order on the calling thread. With more, the game is split into that many stretches
+    // analyzed side by side: several times faster on a multi-core machine, and the results are the same on every
+    // run with the same thread count (they can differ slightly from a one-thread review, since each stretch starts
+    // with an empty transposition table). Cancelling returns the moves analyzed from the start without a gap.
+    int threads = 1;
 };
 
 // A position to practice: one where a player made a mistake or blunder and a clearly better move existed.

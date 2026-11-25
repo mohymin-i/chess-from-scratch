@@ -1,5 +1,6 @@
 #include "san.h"
 
+#include "attacks.h"
 #include "movegen.h"
 
 namespace {
@@ -32,9 +33,13 @@ std::string toSan(const Board& board, Move move) {
             if (move.isCapture()) out += static_cast<char>('a' + fileOf(move.from()));
         } else {
             out += PIECE_LETTERS[static_cast<int>(type)];
-            // Other pieces of the same type that could also go to this square.
+            // Other pieces of the same type that could also go to this square. Only if one attacks it at all is it
+            // worth generating the legal moves to see whether that one may actually go there (it may be pinned).
+            const Color us = board.sideToMove();
+            const Bitboard rivals = pieceAttacks(type, move.to(), board.occupancy()) & board.pieces(us, type) &
+                                    ~squareBit(move.from());
             MoveList legal;
-            generateLegal(board, legal);
+            if (rivals) generateLegal(board, legal);
             bool ambiguous = false;
             bool sameFile = false;
             bool sameRank = false;

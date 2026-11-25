@@ -1,6 +1,10 @@
 #include "analysis.h"
 
 #include <algorithm>
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
 #include <cmath>
 
 namespace {
@@ -118,22 +122,20 @@ GameAnalysis analyzeGame(const Game& game, const AnalysisSettings& settings) {
     const int total = static_cast<int>(moves.size());
     if (total == 0) return result;
 
-    Searcher searcher(settings.hashMegabytes);
     SearchLimits limits;
     limits.maxDepth = std::max(1, settings.depth);
     limits.maxNodes = settings.nodesPerPosition;
 
     // Score every position from the start to after the last move (from its side to move's point of view).
     // Position i's score is "eval before move i"; minus position i+1's score is "eval after move i".
-    std::vector<int> scores(total + 1, 0);
+    const int positions = total + 1;
+    std::vector<int> scores(positions, 0);
     std::vector<Move> best(total);
     std::vector<std::vector<Move>> lines(total);
-    std::vector<bool> forced(total, false);
+    std::vector<char> forced(total, 0); // not vector<bool>: threads write neighboring entries
 
-    Game replay(game.startingBoard());
-    int analyzed = 0; // moves with both a "before" and an "after" score
-    bool cancelled = false;
-    for (int i = 0; i <= total; ++i) {
+    // Records position i, which `replay` is at.
+    const auto record = [&](int i, Searcher& searcher, const Game& replay) {
         PositionScore p = scorePosition(searcher, replay, limits);
         scores[i] = p.score;
         if (i < total && !p.best.isNull()) {
@@ -141,12 +143,78 @@ GameAnalysis analyzeGame(const Game& game, const AnalysisSettings& settings) {
             lines[i] = std::move(p.line);
             forced[i] = replay.legalMoves().size() == 1;
         }
-        analyzed = i;
-        if (i == total || cancelled) break;
-        // Resignations, agreed draws and timeouts only happen after the last move, so the replay never refuses
-        // a move.
-        if (!replay.play(moves[i])) break;
-        if (settings.progress && !settings.progress(i + 1, total)) cancelled = true; // finish this move first
+    };
+
+    int analyzed = 0; // moves with both a "before" and an "after" score
+    const int workers = std::clamp(settings.threads, 1, positions);
+    if (workers == 1) {
+        Searcher searcher(settings.hashMegabytes);
+        Game replay(game.startingBoard());
+        bool cancelled = false;
+        for (int i = 0; i <= total; ++i) {
+            record(i, searcher, replay);
+            analyzed = i;
+            if (i == total || cancelled) break;
+            // Resignations, agreed draws and timeouts only happen after the last move, so the replay never refuses
+            // a move.
+            if (!replay.play(moves[i])) break;
+            if (settings.progress && !settings.progress(i + 1, total)) cancelled = true; // finish this move first
+        }
+    } else {
+        // Stretch k covers positions [k * positions / workers, (k + 1) * positions / workers). A fixed split keeps
+        // the results the same from run to run.
+        std::vector<char> done(positions, 0);
+        std::atomic<bool> stop{false};
+        std::mutex mutex;
+        std::condition_variable changed;
+        int finished = 0; // positions done, guarded by mutex
+        int running = workers;
+        const int hashEach = std::max(1, settings.hashMegabytes / workers);
+        std::vector<std::thread> pool;
+        for (int k = 0; k < workers; ++k) {
+            const int lo = k * positions / workers;
+            const int hi = (k + 1) * positions / workers;
+            pool.emplace_back([&, lo, hi] {
+                Searcher searcher(hashEach);
+                Game replay(game.startingBoard());
+                for (int i = 0; i < lo; ++i) replay.play(moves[i]);
+                for (int i = lo; i < hi && !stop.load(std::memory_order_relaxed); ++i) {
+                    record(i, searcher, replay);
+                    {
+                        const std::lock_guard<std::mutex> lock(mutex);
+                        done[i] = 1;
+                        ++finished;
+                    }
+                    changed.notify_one();
+                    if (i < total) replay.play(moves[i]);
+                }
+                {
+                    const std::lock_guard<std::mutex> lock(mutex);
+                    --running;
+                }
+                changed.notify_one();
+            });
+        }
+        // Progress is reported here, on the calling thread, as positions finish.
+        int reported = 0;
+        std::unique_lock<std::mutex> lock(mutex);
+        while (running > 0) {
+            changed.wait(lock, [&] { return finished != reported || running == 0; });
+            const int now = finished;
+            if (now != reported && now < positions && settings.progress && !stop) {
+                reported = now;
+                lock.unlock();
+                if (!settings.progress(now, total)) stop = true;
+                lock.lock();
+            } else {
+                reported = now;
+            }
+        }
+        lock.unlock();
+        for (std::thread& t : pool) t.join();
+        int prefix = 0; // positions done from the start without a gap
+        while (prefix < positions && done[prefix]) ++prefix;
+        analyzed = std::max(0, prefix - 1);
     }
 
     const Color firstMover = game.startingBoard().sideToMove();

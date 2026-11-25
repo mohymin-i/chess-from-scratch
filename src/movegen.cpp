@@ -147,6 +147,27 @@ Bitboard attackersTo(const Board& board, Square sq, Bitboard occupied) {
     return result & occupied;
 }
 
+LegalityShortcut::LegalityShortcut(const Board& board, bool sideToMoveInCheck)
+    : inCheck_(sideToMoveInCheck), king_(kingSquare(board, board.sideToMove())) {
+    if (inCheck_) return;
+    const Color us = board.sideToMove();
+    const Color them = opposite(us);
+    const Bitboard queens = board.pieces(them, PieceType::Queen);
+    // Enemy sliders that would hit our king on an empty board; each one with exactly one piece in between, and that
+    // piece ours, pins it.
+    Bitboard snipers = (rookAttacks(king_, 0) & (board.pieces(them, PieceType::Rook) | queens)) |
+                       (bishopAttacks(king_, 0) & (board.pieces(them, PieceType::Bishop) | queens));
+    const Bitboard occupied = board.occupancy();
+    while (snipers) {
+        const Square sniper = popLsb(snipers);
+        const Bitboard blockers = between(king_, sniper) & occupied;
+        if (blockers && !(blockers & (blockers - 1)) && (blockers & board.occupancy(us))) {
+            pinned_ |= blockers;
+            pinLines_[lsb(blockers)] = line(king_, sniper);
+        }
+    }
+}
+
 bool isLegal(const Board& board, Move move) {
     Board copy = board;
     copy.makeMove(move);
@@ -156,8 +177,13 @@ bool isLegal(const Board& board, Move move) {
 void generateLegal(const Board& board, MoveList& list) {
     MoveList pseudo;
     generatePseudoLegal(board, pseudo);
+    const LegalityShortcut shortcut(board, inCheck(board));
     Board scratch = board;
     for (const Move move : pseudo) {
+        if (shortcut.certainlyLegal(move)) {
+            list.push(move);
+            continue;
+        }
         const UndoInfo undo = scratch.makeMove(move);
         if (!moverLeftInCheck(scratch)) list.push(move);
         scratch.unmakeMove(move, undo);
@@ -168,10 +194,16 @@ std::uint64_t perft(Board& board, int depth) {
     if (depth == 0) return 1;
     MoveList moves;
     generatePseudoLegal(board, moves);
+    const LegalityShortcut shortcut(board, inCheck(board));
     std::uint64_t nodes = 0;
     for (const Move move : moves) {
+        const bool legal = shortcut.certainlyLegal(move);
+        if (legal && depth == 1) {
+            ++nodes; // a legal leaf: nothing to play
+            continue;
+        }
         const UndoInfo undo = board.makeMove(move);
-        if (!moverLeftInCheck(board)) nodes += depth == 1 ? 1 : perft(board, depth - 1);
+        if (legal || !moverLeftInCheck(board)) nodes += depth == 1 ? 1 : perft(board, depth - 1);
         board.unmakeMove(move, undo);
     }
     return nodes;

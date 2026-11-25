@@ -115,11 +115,7 @@ public:
     }
     void placePieceUnchecked(Piece piece, Square sq) {
         removePieceUnchecked(sq);
-        const Bitboard bit = squareBit(sq);
-        pieces_[idx(piece.color)][idx(piece.type)] |= bit;
-        occupancy_[idx(piece.color)] |= bit;
-        mailbox_[sq] = piece;
-        hash_ ^= zobrist::KEYS.piece[idx(piece.color)][idx(piece.type)][sq];
+        putPieceOnEmpty(piece, sq);
     }
     void removePieceUnchecked(Square sq) {
         assert(isValidSquare(sq));
@@ -177,6 +173,16 @@ public:
 private:
     struct EmptyTag {};
     explicit Board(EmptyTag) {}
+
+    // placePieceUnchecked without clearing the square first. make/unmakeMove know the square is empty.
+    void putPieceOnEmpty(Piece piece, Square sq) {
+        assert(isValidSquare(sq) && !mailbox_[sq]);
+        const Bitboard bit = squareBit(sq);
+        pieces_[idx(piece.color)][idx(piece.type)] |= bit;
+        occupancy_[idx(piece.color)] |= bit;
+        mailbox_[sq] = piece;
+        hash_ ^= zobrist::KEYS.piece[idx(piece.color)][idx(piece.type)][sq];
+    }
 
     static constexpr int idx(Color c) { return static_cast<int>(c); }
     static constexpr int idx(PieceType t) { return static_cast<int>(t); }

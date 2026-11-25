@@ -197,3 +197,48 @@ TEST(attacks_bit_scans) {
     CHECK_EQ(popLsb(b), H8);
     CHECK_EQ(b, Bitboard{0});
 }
+
+// The table-based slider attacks against the ray-walking reference, for every square and every pattern of blockers
+// on the squares that matter (up to 4,096 per square for a rook), plus random full boards.
+TEST(attacks_fast_sliders_match_the_reference_exhaustively) {
+    using namespace attacks_detail;
+    for (Square sq = A1; sq <= H8; ++sq) {
+        for (const bool rook : {true, false}) {
+            // The squares that can block: the rays without their edge squares.
+            const Bitboard rays = rook ? rookAttacksByRays(sq, 0) : bishopAttacksByRays(sq, 0);
+            Bitboard relevant = 0;
+            for (Bitboard b = rays; b;) {
+                const Square s = popLsb(b);
+                const int f = fileOf(s);
+                const int r = rankOf(s);
+                const bool edgeOfRay = rook ? ((f == fileOf(sq) && (r == 0 || r == 7)) ||
+                                               (r == rankOf(sq) && (f == 0 || f == 7)))
+                                            : (f == 0 || f == 7 || r == 0 || r == 7);
+                if (!edgeOfRay) relevant |= squareBit(s);
+            }
+            // Every subset of `relevant` (Carry-Rippler enumeration), with the edges randomly occupied too.
+            Bitboard subset = 0;
+            int count = 0;
+            do {
+                const Bitboard occupied = subset | (count % 3 == 0 ? rays & ~relevant : 0) | squareBit(sq);
+                const Bitboard fast = rook ? rookAttacks(sq, occupied) : bishopAttacks(sq, occupied);
+                const Bitboard slow = rook ? rookAttacksByRays(sq, occupied) : bishopAttacksByRays(sq, occupied);
+                if (fast != slow) CHECK_EQ(fast, slow);
+                subset = (subset - relevant) & relevant;
+                ++count;
+            } while (subset);
+            CHECK_EQ(count, 1 << popCount(relevant));
+        }
+    }
+    std::mt19937_64 rng(11);
+    for (int i = 0; i < 20000; ++i) {
+        const Bitboard occupied = rng() & rng();
+        const auto sq = static_cast<Square>(rng() % 64);
+        CHECK_EQ(rookAttacks(sq, occupied), rookAttacksByRays(sq, occupied));
+        CHECK_EQ(bishopAttacks(sq, occupied), bishopAttacksByRays(sq, occupied));
+    }
+}
+
+// Compile-time use still works.
+static_assert(rookAttacks(A1, 0) == ((FILE_A | RANK_1) & ~squareBit(A1)));
+static_assert(bishopAttacks(D4, squareBit(F6)) == (attacks_detail::bishopAttacksByRays(D4, squareBit(F6))));

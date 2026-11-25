@@ -224,12 +224,12 @@ UndoInfo Board::makeMove(Move move) {
     }
 
     removePieceUnchecked(from);
-    placePieceUnchecked(move.isPromotion() ? Piece{move.promotionType(), us} : mover, to);
+    putPieceOnEmpty(move.isPromotion() ? Piece{move.promotionType(), us} : mover, to);
 
     if (move.isCastle()) {
         const RookHop hop = rookHopFor(to);
         removePieceUnchecked(hop.from);
-        placePieceUnchecked(Piece{PieceType::Rook, us}, hop.to);
+        putPieceOnEmpty(Piece{PieceType::Rook, us}, hop.to);
     }
 
     if (move.isDoublePawnPush()) {
@@ -262,17 +262,17 @@ void Board::unmakeMove(Move move, const UndoInfo& undo) {
     if (move.isCastle()) {
         const RookHop hop = rookHopFor(to);
         removePieceUnchecked(hop.to);
-        placePieceUnchecked(Piece{PieceType::Rook, us}, hop.from);
+        putPieceOnEmpty(Piece{PieceType::Rook, us}, hop.from);
     }
 
     const Piece moved = move.isPromotion() ? Piece{PieceType::Pawn, us} : *mailbox_[to];
     removePieceUnchecked(to);
-    placePieceUnchecked(moved, from);
+    putPieceOnEmpty(moved, from);
 
     if (undo.captured) {
         const Square capturedSquare =
             move.isEnPassant() ? static_cast<Square>(us == Color::White ? to - 8 : to + 8) : to;
-        placePieceUnchecked(*undo.captured, capturedSquare);
+        putPieceOnEmpty(*undo.captured, capturedSquare);
     }
 
     castlingRights_ = undo.castlingRights;

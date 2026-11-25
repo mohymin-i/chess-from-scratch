@@ -1,5 +1,6 @@
 #include <cmath>
 #include <string>
+#include <thread>
 
 #include "analysis.h"
 #include "bot.h"
@@ -228,4 +229,44 @@ TEST(bot_human_like_choice_reduces_odd_moves) {
     CHECK(oddMoves(true) < oddMoves(false));
     CHECK(findBot("Pebble")->humanLikeChoice);
     CHECK(!findBot("Zenith")->humanLikeChoice); // full strength always plays the best move it finds
+}
+
+TEST(analysis_on_several_threads) {
+    const Game game = scholarsMate();
+    AnalysisSettings settings = shallow();
+    settings.threads = 3;
+    const GameAnalysis a = analyzeGame(game, settings);
+    const GameAnalysis b = analyzeGame(game, settings);
+    CHECK_EQ(static_cast<int>(a.moves.size()), 7);
+    // The same on every run with the same thread count.
+    for (std::size_t i = 0; i < a.moves.size(); ++i) {
+        CHECK(a.moves[i].best == b.moves[i].best);
+        CHECK_EQ(a.moves[i].evalBefore, b.moves[i].evalBefore);
+        CHECK_EQ(a.moves[i].evalAfter, b.moves[i].evalAfter);
+    }
+    // And it reaches the same verdicts as the one-thread review.
+    CHECK(a.moves[5].quality == MoveQuality::Blunder);
+    CHECK(a.moves[6].quality == MoveQuality::Best);
+    CHECK_EQ(a.black.blunders, 1);
+    CHECK_EQ(a.white.blunders, 0);
+    // More threads than positions is fine.
+    settings.threads = 64;
+    CHECK_EQ(static_cast<int>(analyzeGame(game, settings).moves.size()), 7);
+
+    // Progress is reported on the calling thread, and cancelling keeps only moves analyzed from the start on.
+    settings.threads = 4;
+    const std::thread::id caller = std::this_thread::get_id();
+    bool sameThread = true;
+    int calls = 0;
+    settings.progress = [&](int done, int total) {
+        sameThread &= std::this_thread::get_id() == caller;
+        ++calls;
+        CHECK(done >= 1 && done <= total);
+        return false; // cancel at once
+    };
+    const GameAnalysis cancelled = analyzeGame(game, settings);
+    CHECK(sameThread);
+    CHECK(calls >= 1);
+    CHECK(cancelled.moves.size() < 7);
+    for (std::size_t i = 0; i < cancelled.moves.size(); ++i) CHECK(cancelled.moves[i].played == game.moves()[i]);
 }
